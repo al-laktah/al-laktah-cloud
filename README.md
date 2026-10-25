@@ -21,6 +21,7 @@ flowchart LR
     subgraph oci["Oracle Cloud · home region · Always Free"]
         state[("Object Storage bucket<br/>Terraform state<br/>private · versioned · locked")]
         backups[("Object Storage bucket<br/>restic backups<br/>encrypted · nightly")]
+        nbbackups[("Object Storage bucket<br/>NetBird backups<br/>encrypted · nightly")]
         subgraph vcn["VCN 10.0.0.0/16"]
             igw["Internet gateway"]
             subgraph subnet["Public subnet 10.0.1.0/24<br/>security list: SSH, HTTP(S) in, all out"]
@@ -54,6 +55,8 @@ flowchart LR
     outline -.->|OIDC sign-in| pocketid
     backup -->|instance principal, read-write| backups
     check -->|instance principal, read-only| backups
+    netbird -->|instance principal, read-write| nbbackups
+    check -->|read-only| nbbackups
     gatus -.->|checks every minute| igw
     check -->|daily result| gatus
     gatus -->|alerts| phone
@@ -68,7 +71,7 @@ flowchart LR
 - **Services:** Docker Compose stacks in [`services/`](services/README.md). They sit behind one Caddy reverse proxy that handles HTTPS for every site, and Pocket ID gives them passkey sign-in.
 - **Backups:** every night, restic encrypts the services' databases and files and uploads them to a separate Object Storage bucket, keeping 7 daily, 4 weekly and 6 monthly snapshots. The VM signs in as itself, so it holds no cloud credentials.
 - **Watchtower:** an Always Free AMD micro VM. Gatus checks the sites, SSH and certificates every minute and alerts your phone through ntfy. A daily job independently verifies the backups, read-only: it checks they're recent, re-reads the data and restores the databases to prove they load.
-- **VPN:** the second AMD micro runs [NetBird](https://netbird.io)'s control server: sign-in, peer discovery, a relay and STUN for a WireGuard mesh. Devices connect to each other directly whenever they can. A network security group opens STUN's UDP port on that VM only.
+- **VPN:** the second AMD micro runs [NetBird](https://netbird.io)'s control server: sign-in, peer discovery, a relay and STUN for a WireGuard mesh. Devices connect to each other directly whenever they can. A network security group opens STUN's UDP port on that VM only. Its data is backed up nightly to a bucket of its own, and the watchtower verifies those backups too.
 
 All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs, 12 GB), both AMD micro VMs, 150 of the 200 GB of block storage (three 50 GB boot volumes), and a small part of the 20 GB of Object Storage.
 
@@ -100,7 +103,7 @@ All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs
 | `dns.tf` | Cloudflare A records pointing at the VM, its own and one per website (DNS only, not proxied) |
 | `watchtower.tf` | The watchtower VM (Always Free AMD micro) |
 | `netbird.tf` | The NetBird VPN server (the second AMD micro), with its own network security group for STUN |
-| `backup.tf` | Dynamic groups and policies: the VM may write to the backups bucket, the watchtower may only read it |
+| `backup.tf` | Dynamic groups and policies: the main VM and the NetBird VM may each write to their own backups bucket, and the watchtower may only read them |
 | `outputs.tf` | Values printed after `apply` (IP, hostname, SSH command) |
 | `terraform.tfvars.example`, `backend.hcl.example`, `terraform.env.example` | Templates for your personal values |
 | `bootstrap/` | A separate config for the long-lived buckets, Terraform state and backups, that must outlive the VM |

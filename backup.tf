@@ -27,6 +27,28 @@ resource "oci_identity_policy" "vm_backups" {
   ]
 }
 
+# The NetBird VM (netbird.tf) writes its own backups to a bucket of their own, and
+# may not touch the main VM's.
+resource "oci_identity_dynamic_group" "netbird" {
+  compartment_id = var.tenancy_ocid
+  name           = var.netbird_name
+  description    = "The al-laktah-cloud NetBird VM, so policies can grant it access as an instance principal"
+  matching_rule  = "ALL {instance.id = '${oci_core_instance.netbird.id}'}"
+  freeform_tags  = local.common_tags
+}
+
+resource "oci_identity_policy" "netbird_backups" {
+  compartment_id = var.tenancy_ocid
+  name           = "${var.netbird_name}-backups"
+  description    = "Lets the al-laktah-cloud NetBird VM use its own backups bucket, and nothing else"
+  freeform_tags  = local.common_tags
+
+  statements = [
+    "Allow dynamic-group ${oci_identity_dynamic_group.netbird.name} to read buckets in tenancy where target.bucket.name = '${var.netbird_backup_bucket_name}'",
+    "Allow dynamic-group ${oci_identity_dynamic_group.netbird.name} to manage objects in tenancy where target.bucket.name = '${var.netbird_backup_bucket_name}'",
+  ]
+}
+
 # The watchtower (watchtower.tf) verifies the backups independently. It may only
 # read them ("read objects" = list and download), so it can't damage what it checks.
 resource "oci_identity_dynamic_group" "watchtower" {
@@ -40,11 +62,13 @@ resource "oci_identity_dynamic_group" "watchtower" {
 resource "oci_identity_policy" "watchtower_backups" {
   compartment_id = var.tenancy_ocid
   name           = "${var.watchtower_name}-backups"
-  description    = "Lets the al-laktah-cloud watchtower read the backups bucket, and nothing else"
+  description    = "Lets the al-laktah-cloud watchtower read the backups buckets, and nothing else"
   freeform_tags  = local.common_tags
 
   statements = [
     "Allow dynamic-group ${oci_identity_dynamic_group.watchtower.name} to read buckets in tenancy where target.bucket.name = '${var.backup_bucket_name}'",
     "Allow dynamic-group ${oci_identity_dynamic_group.watchtower.name} to read objects in tenancy where target.bucket.name = '${var.backup_bucket_name}'",
+    "Allow dynamic-group ${oci_identity_dynamic_group.watchtower.name} to read buckets in tenancy where target.bucket.name = '${var.netbird_backup_bucket_name}'",
+    "Allow dynamic-group ${oci_identity_dynamic_group.watchtower.name} to read objects in tenancy where target.bucket.name = '${var.netbird_backup_bucket_name}'",
   ]
 }

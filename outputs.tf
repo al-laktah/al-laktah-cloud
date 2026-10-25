@@ -45,6 +45,7 @@ output "backup_config" {
     OCI_REGION=${oci_core_instance.arm_vm.region}
     OCI_COMPARTMENT_OCID=${var.tenancy_ocid}
     BACKUP_BUCKET=${var.backup_bucket_name}
+    NETBIRD_BACKUP_BUCKET=${var.netbird_backup_bucket_name}
   EOT
 }
 

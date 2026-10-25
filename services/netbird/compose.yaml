@@ -66,6 +66,29 @@ services:
       NGINX_SSL_PORT: "443"
       LETSENCRYPT_DOMAIN: none # Caddy handles HTTPS
 
+  # Nightly encrypted backups of the server's data to this VM's own bucket
+  # (bootstrap/), with restic. Signs in to OCI as the VM itself (backup.tf).
+  backup:
+    build: ./backup
+    image: services/netbird-backup:local
+    restart: unless-stopped
+    init: true # forwards `docker stop` to the sleeping scheduler
+    hostname: netbird # restic groups snapshots by host, so keep it stable
+    environment:
+      BACKUP_TIME: ${NETBIRD_BACKUP_TIME:-02:00}
+      RESTIC_REPOSITORY: rclone:oos:${NETBIRD_BACKUP_BUCKET:?set in services/config.env}/restic
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD:?missing from .env.tpl}
+      RESTIC_CACHE_DIR: /cache
+      # rclone remote "oos": OCI Object Storage, signed in as the VM itself
+      RCLONE_CONFIG_OOS_TYPE: oracleobjectstorage
+      RCLONE_CONFIG_OOS_PROVIDER: instance_principal_auth
+      RCLONE_CONFIG_OOS_NAMESPACE: ${OCI_NAMESPACE:?set in services/config.env}
+      RCLONE_CONFIG_OOS_COMPARTMENT: ${OCI_COMPARTMENT_OCID:?set in services/config.env}
+      RCLONE_CONFIG_OOS_REGION: ${OCI_REGION:?set in services/config.env}
+    volumes:
+      - data:/src/netbird # read-write, because SQLite needs its lock files
+      - backup-cache:/cache
+
 # The server takes its secrets only from its config file, so the file is written
 # here, with the ${...} values filled in from the .env that deploy.sh renders.
 configs:
@@ -109,9 +132,13 @@ volumes:
   data:
   caddy-data:
   caddy-config:
+  backup-cache:
 
 networks:
   default:
     ipam:
       config:
         - subnet: 172.30.0.0/24
+          # Other containers get addresses from the top half only, so none of them
+          # can take Caddy's fixed one while Caddy is being recreated.
+          ip_range: 172.30.0.128/25

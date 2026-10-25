@@ -72,3 +72,24 @@ resource "oci_objectstorage_bucket" "backups" {
     prevent_destroy = true
   }
 }
+
+# The NetBird VM's backups (services/netbird), in a bucket of their own. That VM is
+# the most exposed one, so its write access stops here: if it were ever taken
+# over, the main VM's backups would be out of its reach.
+resource "oci_objectstorage_bucket" "netbird_backups" {
+  compartment_id = var.tenancy_ocid
+  namespace      = data.oci_objectstorage_namespace.this.namespace
+  name           = var.netbird_backup_bucket_name
+  access_type    = "NoPublicAccess"
+  storage_tier   = "Standard"
+  versioning     = "Disabled" # same reason as the backups bucket
+
+  freeform_tags = {
+    "managed-by" = "terraform"
+    "project"    = "al-laktah-cloud"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}

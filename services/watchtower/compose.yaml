@@ -28,7 +28,8 @@ services:
       GATUS_URL: http://gatus:8080
       GATUS_PUSH_TOKEN: ${GATUS_PUSH_TOKEN}
       RESTIC_REPOSITORY: rclone:oos:${BACKUP_BUCKET:?set in services/config.env}/restic
-      RESTIC_PASSWORD: ${RESTIC_PASSWORD:?missing from .env.tpl}
+      NETBIRD_RESTIC_REPOSITORY: rclone:oos:${NETBIRD_BACKUP_BUCKET:?set in services/config.env}/restic
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD:?missing from .env.tpl} # opens both repositories
       RESTIC_CACHE_DIR: /cache
       # rclone remote "oos": OCI Object Storage, signed in as the watchtower VM,
       # whose policy only allows reading (backup.tf)

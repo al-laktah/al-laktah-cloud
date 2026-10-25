@@ -184,14 +184,14 @@ Delete `~/restore` when you're done; it holds unencrypted copies of everything.
 A separate, Always Free AMD micro VM (`watchtower.tf`) watches the main VM from outside, because a VM that hangs can't report on itself. It runs two containers (`services/watchtower/`):
 
 - **Gatus** checks `wiki`, `auth`, `shorti` and `netbird` over HTTPS and the main VM's SSH port, every minute. It sends an alert to your phone through [ntfy](https://ntfy.sh) after 3 failed checks in a row, or when a certificate has less than 10 days left. It sends another when things recover.
-- **backup-check** verifies the backups every day at 06:00 UTC:
+- **backup-check** verifies the backups of both VMs every day at 06:00 UTC, first the main VM's, then the NetBird VM's:
   1. The latest backup is less than 26 hours old.
   2. The repository passes `restic check`, which also downloads and verifies a different quarter of all backup data each day (all of it every 4 days).
-  3. The databases restore: Pocket ID's and shorti's SQLite files pass an integrity check, and Outline's dump loads into a throwaway Postgres.
+  3. The databases restore: Pocket ID's and shorti's SQLite files pass an integrity check, and Outline's dump loads into a throwaway Postgres. For NetBird, every SQLite database passes an integrity check, and the store still holds your account.
 
-  It reports each result to Gatus. Gatus alerts on a failure, and also if no result arrives for 26 hours.
+  It reports each result to Gatus, as `nightly backup` and `netbird backup`. Gatus alerts on a failure, and also if no result arrives for 26 hours.
 
-The watchtower can only **read** the backups bucket (`backup.tf`). Every restic command runs with `--no-lock`, so it never writes, and it couldn't damage the backups even if it went wrong.
+The watchtower can only **read** the backups buckets (`backup.tf`). Every restic command runs with `--no-lock`, so it never writes, and it couldn't damage the backups even if it went wrong.
 
 ### One-time setup
 
@@ -221,7 +221,7 @@ The watchtower can only **read** the backups bucket (`backup.tf`). Every restic 
 6. **Deploy, then run the first backup check right away:**
    ```sh
    services/deploy.sh watchtower        # builds the check image on the VM; takes a few minutes on the micro
-   ssh watchtower 'cd ~/services/watchtower && docker compose exec backup-check check.sh'
+   ssh watchtower 'cd ~/services/watchtower && docker compose exec backup-check check.sh main'
    ```
    It should end with `== backup check passed: …`. Right after `terraform apply`, the new policy can take a few minutes to apply everywhere. If the check can't read the snapshots, wait and try again.
 
@@ -230,7 +230,8 @@ The watchtower can only **read** the backups bucket (`backup.tf`). Every restic 
 ```sh
 ssh -L 8080:localhost:8080 watchtower   # then open http://localhost:8080 for the Gatus dashboard
 ssh watchtower 'cd ~/services/watchtower && docker compose logs --tail 50 backup-check'
-ssh watchtower 'cd ~/services/watchtower && docker compose exec backup-check check.sh'   # check the backups now
+ssh watchtower 'cd ~/services/watchtower && docker compose exec backup-check check.sh main'      # check the main VM's backups now
+ssh watchtower 'cd ~/services/watchtower && docker compose exec backup-check check.sh netbird'   # or the NetBird VM's
 ```
 
 To change what's monitored, edit `watchtower/gatus/config.yaml` and redeploy.
@@ -284,4 +285,41 @@ ssh netbird 'docker stats --no-stream'   # memory use on the 1 GB VM
 netbird status -d                        # on a device: is each peer P2P (direct) or Relayed?
 ```
 
-To update NetBird, change the image tags in `netbird/compose.yaml` and redeploy. NetBird's data isn't in the nightly backups yet, so if the VM is lost, every device has to be added again.
+To update NetBird, change the image tags in `netbird/compose.yaml` and redeploy.
+
+### NetBird's backups
+
+Every night at 02:00 UTC, the stack's `backup` container copies NetBird's three SQLite databases with SQLite's online backup: `store.db` (accounts, devices, policies), `idp.db` (the built-in sign-in) and `events.db` (the activity log). restic then encrypts them, together with any other files in the data folder. The GeoLite location files are left out, because the server downloads them again. Retention is the same as the main VM's: 7 daily, 4 weekly and 6 monthly snapshots.
+
+They go to a bucket of their own, `netbird-backups`. The NetBird VM is the most exposed one, so its policy (`backup.tf`) only lets it write there: if it were ever taken over, the main VM's backups would stay out of its reach. It uses the same restic password (the `Backups` item), so one secret opens both. The watchtower verifies these backups every day as well (see [Watchtower](#watchtower)).
+
+**One-time setup:**
+
+1. **The bucket:** `cd bootstrap && terraform apply`. Expect 1 to add.
+2. **The permissions:** `terraform apply` in the repo root. Expect 2 to add (the NetBird VM's dynamic group and policy) and 1 to change (the watchtower's policy can now read the new bucket too).
+3. **The setting:** make sure `services/config.env` has `NETBIRD_BACKUP_BUCKET` (it's in `terraform output -raw backup_config`).
+4. **Deploy, create the restic repository (once, ever), then run a first backup right away:**
+   ```sh
+   services/deploy.sh netbird
+   ssh netbird 'cd ~/services/netbird && docker compose exec backup restic init'
+   ssh netbird 'cd ~/services/netbird && docker compose exec backup backup.sh'
+   ```
+   The backup should end with `no errors were found` and `== backup finished`. If restic says the repository doesn't exist right after `terraform apply`, the new policy isn't active everywhere yet. Wait a few minutes, then try again.
+5. **Have the watchtower check it:**
+   ```sh
+   services/deploy.sh watchtower
+   ssh watchtower 'cd ~/services/watchtower && docker compose exec backup-check check.sh netbird'
+   ```
+   It should end with `== netbird backup check passed: …`.
+
+**Restoring,** on the NetBird VM. The store can only be read with the same `store_encryption_key` that was in use when the backup was made, so never change it in 1Password. After a rebuild, deploy the stack first, so the volume exists:
+
+```sh
+cd ~/services/netbird
+docker compose run --rm -v ~/restore:/restore backup restic restore latest --target /restore
+docker compose stop server
+docker compose run --rm -v ~/restore:/r:ro backup sh -c \
+  'rm -f /src/netbird/*.db-wal /src/netbird/*.db-shm && cp -a /r/src/netbird/. /src/netbird/ && cp /r/staging/*.db /src/netbird/'
+docker compose start server
+rm -rf ~/restore   # unencrypted copies
+```

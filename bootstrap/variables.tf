@@ -30,3 +30,9 @@ variable "backup_bucket_name" {
   type        = string
   default     = "backups"
 }
+
+variable "netbird_backup_bucket_name" {
+  description = "Name of the bucket for the NetBird VM's backups. Must match netbird_backup_bucket_name in the main config."
+  type        = string
+  default     = "netbird-backups"
+}

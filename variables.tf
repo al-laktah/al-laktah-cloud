@@ -169,6 +169,12 @@ variable "backup_bucket_name" {
   default     = "backups"
 }
 
+variable "netbird_backup_bucket_name" {
+  description = "Bucket the NetBird VM may write its backups to (created by bootstrap/). Must match netbird_backup_bucket_name there."
+  type        = string
+  default     = "netbird-backups"
+}
+
 variable "ssh_public_keys" {
   description = "SSH public keys authorised for the \"ubuntu\" user, one key per string. Security-key (sk-*) keys are supported."
   type        = list(string)

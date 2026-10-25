@@ -13,6 +13,11 @@ output "backup_bucket_name" {
   value       = oci_objectstorage_bucket.backups.name
 }
 
+output "netbird_backup_bucket_name" {
+  description = "Name of the NetBird VM's backups bucket."
+  value       = oci_objectstorage_bucket.netbird_backups.name
+}
+
 # Ready-made partial backend configuration for the main config:
 #   terraform output -raw backend_config > ../backend.hcl
 output "backend_config" {

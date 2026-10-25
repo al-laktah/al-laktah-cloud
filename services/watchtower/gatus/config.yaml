@@ -83,3 +83,15 @@ external-endpoints:
         failure-threshold: 1
         success-threshold: 1
         send-on-resolved: true
+
+  # The same for the NetBird VM's backups (key "backups_netbird-backup").
+  - name: netbird backup
+    group: backups
+    token: "${GATUS_PUSH_TOKEN}"
+    heartbeat:
+      interval: 26h
+    alerts:
+      - type: ntfy
+        failure-threshold: 1
+        success-threshold: 1
+        send-on-resolved: true

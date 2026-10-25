@@ -6,3 +6,5 @@
 NETBIRD_AUTH_SECRET={{ op://Private/NetBird/auth_secret }}
 NETBIRD_SESSION_KEY={{ op://Private/NetBird/session_cookie_key }}
 NETBIRD_STORE_KEY={{ op://Private/NetBird/store_encryption_key }}
+# The same restic password as the main VM's backups, so one secret opens both.
+RESTIC_PASSWORD={{ op://Private/Backups/restic_password }}
