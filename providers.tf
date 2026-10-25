@@ -7,6 +7,7 @@ provider "oci" {
   region = var.region
 }
 
-# Reads its API token from the CLOUDFLARE_API_TOKEN environment variable (see README),
-# so the token never appears in code, tfvars or state.
+# Reads its API token from the CLOUDFLARE_API_TOKEN environment variable, which
+# `op run --env-file=terraform.env` sets for each command (see README), so the token
+# never appears in code, tfvars or state.
 provider "cloudflare" {}

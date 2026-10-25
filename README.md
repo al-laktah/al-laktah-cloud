@@ -94,13 +94,13 @@ All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs
 | `netbird.tf` | The NetBird VPN server (the second AMD micro), with its own network security group for STUN |
 | `backup.tf` | Dynamic groups and policies: the VM may write to the backups bucket, the watchtower may only read it |
 | `outputs.tf` | Values printed after `apply` (IP, hostname, SSH command) |
-| `terraform.tfvars.example`, `backend.hcl.example` | Templates for your personal values |
+| `terraform.tfvars.example`, `backend.hcl.example`, `terraform.env.example` | Templates for your personal values |
 | `bootstrap/` | A separate config for the long-lived buckets, Terraform state and backups, that must outlive the VM |
 | `host/setup-vm.sh` | Prepares the VM itself for the services: updates, its own firewall, Docker, log rotation |
 | `services/` | Docker Compose stacks (Caddy, Pocket ID, Outline, backups, and the watchtower's Gatus and backup checks) and `deploy.sh`. See [services/README.md](services/README.md) |
 | `.github/workflows/terraform.yml` | CI: `fmt` and `validate` for both Terraform configs, `docker compose config` for every stack, and ShellCheck for every script |
 
-Personal values live only in git-ignored files: `terraform.tfvars`, `bootstrap/terraform.tfvars` and `backend.hcl`. Secrets never touch the repo: the OCI API key stays in `~/.oci`, and the Cloudflare token stays in your password manager.
+Personal values live only in git-ignored files: `terraform.tfvars`, `bootstrap/terraform.tfvars`, `backend.hcl` and `terraform.env`. Secrets never touch the repo: the OCI API key stays in `~/.oci`, and the Cloudflare token stays in your password manager.
 
 ## One-time setup
 
@@ -148,6 +148,7 @@ Terraform signs its API calls to OCI with a key pair.
 ```sh
 cp terraform.tfvars.example terraform.tfvars
 cp bootstrap/terraform.tfvars.example bootstrap/terraform.tfvars
+cp terraform.env.example terraform.env
 ```
 
 - `terraform.tfvars` needs:
@@ -156,6 +157,7 @@ cp bootstrap/terraform.tfvars.example bootstrap/terraform.tfvars
   - `dns_name`, `watchtower_dns_name` and `netbird_dns_name`
   - `ssh_public_keys`
 - `bootstrap/terraform.tfvars` needs `tenancy_ocid` and `region`.
+- `terraform.env` needs the 1Password reference to your Cloudflare token (see [The Terraform workflow](#the-terraform-workflow)).
 
 Check `ssh_public_keys` **before the first apply**: the keys are baked into the VM when it is created (see Gotchas).
 
@@ -175,11 +177,15 @@ The bucket is private and versioned, so every past state is kept and can be rest
 
 ## The Terraform workflow
 
-Load the Cloudflare token into your shell first (once per terminal session):
+`plan`, `apply` and `destroy` talk to Cloudflare, so they need the token in `CLOUDFLARE_API_TOKEN`. Instead of exporting it into your shell, let 1Password hand it to each command:
 
 ```sh
-export CLOUDFLARE_API_TOKEN=$(op read "op://Private/Cloudflare zone edit al-laktah/credential")
+op run --env-file=terraform.env -- terraform plan -out=tfplan
 ```
+
+`terraform.env` holds only a reference (`CLOUDFLARE_API_TOKEN="op://vault/item/field"`). `op run` looks it up, runs the command with the token in its environment, and masks the token if it ever shows up in the output. The token is never stored in your shell, so a new terminal can't silently be missing it. If 1Password is locked or the reference is wrong, `op run` stops with an error instead of starting Terraform without a token.
+
+To save typing, add `alias tf='op run --env-file=terraform.env -- terraform'` to your shell profile and run `tf plan`, `tf apply`. Only the repo root needs it, since `bootstrap/` doesn't use Cloudflare.
 
 `op://` references only allow letters, digits, `-`, `_`, `.` and spaces in vault, item and field names. If a name has anything else (e.g. parentheses), rename the item or use its ID instead (`op item list` shows IDs).
 

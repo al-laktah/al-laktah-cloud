@@ -12,6 +12,7 @@ crash.*.log
 *.tfvars.json
 !*.tfvars.example
 backend.hcl
+terraform.env
 services/config.env
 
 # Rendered service secrets (deploy.sh writes them straight to the VM; never commit)
