@@ -5,6 +5,7 @@ tenancy_ocid        = "ocid1.tenancy.oc1..aaaaaaaa..."
 cloudflare_zone_id  = "0123456789abcdef0123456789abcdef" # dashboard -> domain -> Overview -> API
 dns_name            = "cloud.example.com"
 watchtower_dns_name = "watchtower.example.com"
+netbird_dns_name    = "netbird.example.com"
 
 # Public keys allowed to SSH in as "ubuntu". Security-key (sk-*) keys work too.
 ssh_public_keys = [
@@ -22,3 +23,4 @@ ssh_public_keys = [
 # instance_memory_gbs       = 12
 # boot_volume_size_gbs      = 50
 # watchtower_name           = "watchtower"
+# netbird_name              = "netbird"

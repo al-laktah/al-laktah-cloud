@@ -1,38 +1,6 @@
 # A small, separate VM that watches the main one: Gatus checks the sites, and an
 # independent job verifies the backups (services/watchtower). It runs on the
-# Always Free AMD micro shape (1/8 OCPU, 1 GB RAM, x86), which a region may offer
-# in only one availability domain, so the domain is looked up, not picked by index.
-
-data "oci_core_shapes" "micro" {
-  for_each            = toset([for ad in data.oci_identity_availability_domains.ads.availability_domains : ad.name])
-  compartment_id      = local.compartment_id
-  availability_domain = each.value
-
-  filter {
-    name   = "name"
-    values = ["VM.Standard.E2.1.Micro"]
-  }
-}
-
-locals {
-  micro_availability_domains = [for ad, result in data.oci_core_shapes.micro : ad if length(result.shapes) > 0]
-}
-
-# Newest x86 Ubuntu 24.04 image (the A1 VM's images are Arm and won't boot here).
-data "oci_core_images" "ubuntu_x86" {
-  compartment_id           = local.compartment_id
-  operating_system         = "Canonical Ubuntu"
-  operating_system_version = "24.04"
-  shape                    = "VM.Standard.E2.1.Micro"
-  sort_by                  = "TIMECREATED"
-  sort_order               = "DESC"
-
-  filter {
-    name   = "display_name"
-    values = ["^Canonical-Ubuntu-24\\.04-[0-9]"]
-    regex  = true
-  }
-}
+# Always Free AMD micro shape; the shape and image lookups are in compute.tf.
 
 resource "oci_core_instance" "watchtower" {
   compartment_id      = local.compartment_id

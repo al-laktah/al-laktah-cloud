@@ -28,6 +28,16 @@ output "watchtower_hostname" {
   value       = cloudflare_dns_record.watchtower.name
 }
 
+output "netbird_public_ip" {
+  description = "Public IP of the NetBird VM."
+  value       = oci_core_instance.netbird.public_ip
+}
+
+output "netbird_hostname" {
+  description = "DNS name pointing at the NetBird VM."
+  value       = cloudflare_dns_record.netbird.name
+}
+
 output "backup_config" {
   description = "Settings for services/config.env, used by the backup stack."
   value       = <<-EOT

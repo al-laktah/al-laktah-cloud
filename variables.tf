@@ -131,13 +131,13 @@ variable "instance_memory_gbs" {
 }
 
 variable "boot_volume_size_gbs" {
-  description = "Boot volume size in GB for the A1 VM. Always Free gives 200 GB of block storage in total (boot + block volumes), and the watchtower's boot volume takes 50 GB of it."
+  description = "Boot volume size in GB for the A1 VM. Always Free gives 200 GB of block storage in total (boot + block volumes), and the watchtower and NetBird boot volumes take 50 GB each."
   type        = number
   default     = 50
 
   validation {
-    condition     = var.boot_volume_size_gbs >= 50 && var.boot_volume_size_gbs <= 150
-    error_message = "Boot volume must be between 50 and 150 GB (the watchtower uses another 50 of the free 200 GB)."
+    condition     = var.boot_volume_size_gbs >= 50 && var.boot_volume_size_gbs <= 100
+    error_message = "Boot volume must be between 50 and 100 GB (the watchtower and NetBird VMs use another 100 of the free 200 GB)."
   }
 }
 
@@ -149,6 +149,17 @@ variable "watchtower_name" {
 
 variable "watchtower_dns_name" {
   description = "Fully qualified hostname for the watchtower VM, e.g. \"watchtower.example.com\"."
+  type        = string
+}
+
+variable "netbird_name" {
+  description = "Display name and hostname for the NetBird VM."
+  type        = string
+  default     = "netbird"
+}
+
+variable "netbird_dns_name" {
+  description = "Fully qualified hostname for the NetBird server, e.g. \"netbird.example.com\". Devices and the dashboard use it."
   type        = string
 }
 
