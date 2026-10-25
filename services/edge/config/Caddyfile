@@ -1,0 +1,2 @@
+# One file per site under sites/. {$DOMAIN} comes from services/config.env.
+import sites/*.caddy

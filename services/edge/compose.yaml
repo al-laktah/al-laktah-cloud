@@ -1,0 +1,39 @@
+# The edge proxy: Caddy in front of every service, and the only container that
+# publishes ports. Every other service joins the external "web" network and is
+# reached by its name there; Caddy gets and renews HTTPS certificates for each site.
+#
+# The project and volume names match the edge stack that setup-vm.sh created in
+# ~/services/edge, so deploying this replaces that container in place and keeps
+# its certificates.
+name: edge
+
+services:
+  caddy:
+    image: caddy:2.11-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in services/config.env}
+    volumes:
+      # Mount the folder, not single files: deploys replace the files, and a
+      # single-file bind mount would keep pointing at the old copy.
+      - ./config:/etc/caddy:ro
+      - caddy-data:/data # certificates and ACME account
+      - caddy-config:/config
+    networks:
+      web:
+        # Services that call auth.<domain> server-side (Outline's OIDC token exchange)
+        # resolve it to Caddy directly instead of looping out through the public IP.
+        aliases:
+          - auth.${DOMAIN}
+
+volumes:
+  caddy-data:
+  caddy-config:
+
+networks:
+  web:
+    external: true

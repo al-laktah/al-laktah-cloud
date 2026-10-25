@@ -1,0 +1,3 @@
+auth.{$DOMAIN} {
+	reverse_proxy pocket-id:1411
+}

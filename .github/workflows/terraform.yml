@@ -38,3 +38,24 @@ jobs:
         run: |
           terraform init -backend=false -input=false -lockfile=readonly
           terraform validate
+
+  compose:
+    name: docker compose config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Each stack gets a stand-in .env: DOMAIN, plus every variable its .env.tpl
+      # defines with a placeholder value. `${VAR:?}` in compose.yaml then fails the
+      # check if a stack needs a secret its template doesn't provide.
+      - name: Validate service stacks
+        run: |
+          for dir in services/*/; do
+            [ -f "${dir}compose.yaml" ] || continue # not a stack this repo deploys
+            {
+              echo "DOMAIN=example.com"
+              if [ -f "$dir.env.tpl" ]; then sed -E 's/\{\{ *op:\/\/[^}]*\}\}/ci-placeholder/' "$dir.env.tpl"; fi
+            } > "$dir.env"
+            (cd "$dir" && docker compose config --quiet)
+            echo "ok: $dir"
+          done

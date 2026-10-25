@@ -1,0 +1,72 @@
+# Outline wiki with its Postgres and Redis. Only Outline joins the "web" network;
+# the database and cache stay on this stack's private default network.
+name: outline
+
+services:
+  outline:
+    image: docker.getoutline.com/outlinewiki/outline:1.12.0
+    restart: unless-stopped
+    environment:
+      URL: https://wiki.${DOMAIN:?set DOMAIN in services/config.env}
+      PORT: 3000
+      SECRET_KEY: ${SECRET_KEY:?missing from .env.tpl}
+      UTILS_SECRET: ${UTILS_SECRET:?missing from .env.tpl}
+      DATABASE_URL: postgres://outline:${POSTGRES_PASSWORD:?missing from .env.tpl}@postgres:5432/outline
+      PGSSLMODE: disable
+      REDIS_URL: redis://redis:6379
+      FILE_STORAGE: local
+      FILE_STORAGE_LOCAL_ROOT_DIR: /var/lib/outline/data
+      # Sign-in through Pocket ID (services/pocket-id). Outline has no passwords.
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?missing from .env.tpl}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?missing from .env.tpl}
+      OIDC_AUTH_URI: https://auth.${DOMAIN}/authorize
+      OIDC_TOKEN_URI: https://auth.${DOMAIN}/api/oidc/token
+      OIDC_USERINFO_URI: https://auth.${DOMAIN}/api/oidc/userinfo
+      OIDC_LOGOUT_URI: https://auth.${DOMAIN}/api/oidc/end-session
+      OIDC_USERNAME_CLAIM: preferred_username
+      OIDC_DISPLAY_NAME: Pocket ID
+      OIDC_SCOPES: openid profile email groups
+    volumes:
+      - files:/var/lib/outline/data # uploaded attachments and images
+    networks:
+      - default
+      - web
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: outline
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: outline
+    volumes:
+      # Postgres 18+ keeps its data in a versioned folder under /var/lib/postgresql
+      # (not /var/lib/postgresql/data, as in 17 and earlier).
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "outline", "-d", "outline"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  files:
+  postgres:
+
+networks:
+  web:
+    external: true

@@ -1,0 +1,3 @@
+wiki.{$DOMAIN} {
+	reverse_proxy outline:3000
+}

@@ -1,0 +1,29 @@
+# Pocket ID: a small OpenID Connect provider with passkey-only sign-in (works with
+# a YubiKey). Outline signs in through it, and so can any future service.
+name: pocket-id
+
+services:
+  pocket-id:
+    image: ghcr.io/pocket-id/pocket-id:v2.19.1
+    restart: unless-stopped
+    environment:
+      APP_URL: https://auth.${DOMAIN:?set DOMAIN in services/config.env}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?missing from .env.tpl}
+      TRUST_PROXY: "true" # behind Caddy: take client IPs from X-Forwarded-For
+    volumes:
+      - data:/app/data # SQLite database: users, passkeys, OIDC clients
+    networks:
+      - web
+    healthcheck:
+      test: ["CMD", "/app/pocket-id", "healthcheck"]
+      interval: 1m30s
+      timeout: 5s
+      retries: 2
+      start_period: 10s
+
+volumes:
+  data:
+
+networks:
+  web:
+    external: true

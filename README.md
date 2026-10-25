@@ -3,17 +3,17 @@
 [![Terraform](https://github.com/al-laktah/al-laktah-cloud/actions/workflows/terraform.yml/badge.svg)](https://github.com/al-laktah/al-laktah-cloud/actions/workflows/terraform.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-My personal cloud on Oracle Cloud's **Always Free** tier, built entirely with Terraform: an Arm VM, its network, Cloudflare DNS records and remote state, at no cost.
+My personal cloud on Oracle Cloud's **Always Free** tier, at no cost. Terraform builds the infrastructure: an Arm VM, its network, Cloudflare DNS records and remote state. The services on the VM, an Outline wiki and passkey sign-in, run as Docker Compose stacks behind Caddy.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
     tf["Terraform CLI<br/>(laptop or CI)"]
-    client["SSH client"]
+    client["Browser / SSH client"]
 
     subgraph cloudflare["Cloudflare"]
-        dns["A records<br/>cloud.example.com + one per website<br/>DNS only"]
+        dns["A records<br/>cloud.example.com + one per service<br/>DNS only"]
     end
 
     subgraph oci["Oracle Cloud · home region · Always Free"]
@@ -21,7 +21,12 @@ flowchart LR
         subgraph vcn["VCN 10.0.0.0/16"]
             igw["Internet gateway"]
             subgraph subnet["Public subnet 10.0.1.0/24<br/>security list: SSH, HTTP(S) in, all out"]
-                vm["Ampere A1 VM<br/>2 OCPU · 12 GB RAM<br/>50 GB boot · Ubuntu 24.04"]
+                subgraph vm["Ampere A1 VM · 2 OCPU · 12 GB RAM · Ubuntu 24.04"]
+                    caddy["Caddy<br/>automatic HTTPS"]
+                    outline["Outline wiki<br/>+ Postgres, Redis"]
+                    pocketid["Pocket ID<br/>passkey sign-in"]
+                    shorti["shorti"]
+                end
             end
         end
     end
@@ -31,14 +36,18 @@ flowchart LR
     tf <-->|state + lock| state
     vm -.->|public IP feeds the records| dns
     client -->|1. resolve name| dns
-    client -->|2. SSH on port 22| igw
-    igw --> vm
+    client -->|2. HTTPS, SSH| igw
+    igw -->|HTTPS| caddy
+    igw -->|SSH| vm
+    caddy --> outline & pocketid & shorti
+    outline -.->|OIDC sign-in| pocketid
 ```
 
 - **Compute:** one Ampere A1 (Arm) VM with **2 OCPUs, 12 GB RAM and a 50 GB boot volume**, running Ubuntu 24.04.
 - **Network:** a dedicated VCN and public subnet. The security list allows SSH, HTTP and HTTPS in and all traffic out, and logins are key-only: the keys in `ssh_public_keys`, YubiKey `sk-` keys included.
 - **DNS:** a Cloudflare A record (`dns_name`) that follows the VM's public IP, plus one for each website in `service_dns_names`. They are DNS-only, so SSH goes straight to the VM and the websites get their HTTPS certificates on the VM itself.
 - **State:** a private, versioned Object Storage bucket with automatic locking, created by a separate `bootstrap/` config.
+- **Services:** Docker Compose stacks in [`services/`](services/README.md). They sit behind one Caddy reverse proxy that handles HTTPS for every site, and Pocket ID gives them passkey sign-in.
 
 All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs, 12 GB), 50 of the 200 GB of block storage, and a few KB of the 20 GB of Object Storage.
 
@@ -48,8 +57,9 @@ All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs
 - **Guard rails as code.** Variable validation rejects anything beyond the free tier and catches malformed IDs before any API call is made.
 - **Remote state done properly.** The bucket is bootstrapped separately (the chicken-and-egg problem), versioned for recovery, locked against concurrent runs and protected with `prevent_destroy`.
 - **Working around real platform limits.** OCI's API rejects FIDO2 (`sk-`) SSH keys, so keys go in via cloud-init `user_data`. `ignore_changes` stops new image releases from forcing a rebuild.
+- **The right tool for each layer.** Terraform owns the VM, network and DNS. Docker Compose owns the apps. 1Password owns the secrets, which are injected at deploy time with `op inject` and written straight to the VM.
 - **No secrets in git.** Credentials come from `~/.oci` and a password manager at runtime. Personal values live in git-ignored files, with committed `.example` templates.
-- **CI.** Every push and pull request runs `terraform fmt` and `terraform validate`, with no cloud credentials needed.
+- **CI.** Every push and pull request runs `terraform fmt` and `terraform validate`, and checks every service stack with `docker compose config`. No cloud credentials are needed.
 
 ## Files
 
@@ -66,7 +76,8 @@ All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs
 | `outputs.tf` | Values printed after `apply` (IP, hostname, SSH command) |
 | `terraform.tfvars.example`, `backend.hcl.example` | Templates for your personal values |
 | `bootstrap/` | A separate, run-once config that creates the state bucket |
-| `.github/workflows/terraform.yml` | CI: `fmt` check and `validate` for both configs |
+| `services/` | Docker Compose stacks for the VM (Caddy, Pocket ID, Outline) and `deploy.sh`. See [services/README.md](services/README.md) |
+| `.github/workflows/terraform.yml` | CI: `fmt` and `validate` for both Terraform configs, and `docker compose config` for every stack |
 
 Personal values live only in git-ignored files: `terraform.tfvars`, `bootstrap/terraform.tfvars` and `backend.hcl`. Secrets never touch the repo: the OCI API key stays in `~/.oci`, and the Cloudflare token stays in your password manager.
 
