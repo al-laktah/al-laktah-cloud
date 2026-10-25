@@ -78,6 +78,18 @@ variable "dns_name" {
   type        = string
 }
 
+variable "service_dns_names" {
+  description = "Hostnames of the websites served from the VM, each gets its own A record, e.g. [\"shorti.example.com\"]."
+  type        = list(string)
+  default     = []
+
+  # A URL instead of a bare hostname would otherwise only fail at the Cloudflare API.
+  validation {
+    condition     = alltrue([for name in var.service_dns_names : can(regex("^([a-z0-9-]+\\.)+[a-z]{2,}$", name))])
+    error_message = "service_dns_names must be bare hostnames such as \"shorti.example.com\", without https:// or a path."
+  }
+}
+
 # ---------------------------------------------------------------------------
 # Compute
 # ---------------------------------------------------------------------------

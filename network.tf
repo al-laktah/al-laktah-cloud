@@ -1,5 +1,5 @@
 # A minimal public network: VCN -> internet gateway -> route table -> public subnet,
-# with a security list (stateful firewall) that only lets SSH in.
+# with a security list (stateful firewall) that lets SSH, HTTP and HTTPS in.
 
 resource "oci_core_vcn" "main" {
   compartment_id = local.compartment_id
@@ -52,6 +52,42 @@ resource "oci_core_security_list" "public" {
     tcp_options {
       min = 22
       max = 22
+    }
+  }
+
+  # HTTP and HTTPS from anywhere, for the websites served from the VM.
+  # Port 80 only redirects to HTTPS and answers Let's Encrypt's certificate checks.
+  ingress_security_rules {
+    source      = "0.0.0.0/0"
+    protocol    = "6"
+    description = "HTTP"
+
+    tcp_options {
+      min = 80
+      max = 80
+    }
+  }
+
+  ingress_security_rules {
+    source      = "0.0.0.0/0"
+    protocol    = "6"
+    description = "HTTPS"
+
+    tcp_options {
+      min = 443
+      max = 443
+    }
+  }
+
+  # HTTPS over UDP, for HTTP/3.
+  ingress_security_rules {
+    source      = "0.0.0.0/0"
+    protocol    = "17"
+    description = "HTTP/3"
+
+    udp_options {
+      min = 443
+      max = 443
     }
   }
 

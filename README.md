@@ -3,7 +3,7 @@
 [![Terraform](https://github.com/al-laktah/al-laktah-cloud/actions/workflows/terraform.yml/badge.svg)](https://github.com/al-laktah/al-laktah-cloud/actions/workflows/terraform.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-My personal cloud on Oracle Cloud's **Always Free** tier, built entirely with Terraform: an Arm VM, its network, a Cloudflare DNS record and remote state, at no cost.
+My personal cloud on Oracle Cloud's **Always Free** tier, built entirely with Terraform: an Arm VM, its network, Cloudflare DNS records and remote state, at no cost.
 
 ## Architecture
 
@@ -13,14 +13,14 @@ flowchart LR
     client["SSH client"]
 
     subgraph cloudflare["Cloudflare"]
-        dns["A record<br/>cloud.example.com<br/>DNS only"]
+        dns["A records<br/>cloud.example.com + one per website<br/>DNS only"]
     end
 
     subgraph oci["Oracle Cloud · home region · Always Free"]
         state[("Object Storage bucket<br/>Terraform state<br/>private · versioned · locked")]
         subgraph vcn["VCN 10.0.0.0/16"]
             igw["Internet gateway"]
-            subgraph subnet["Public subnet 10.0.1.0/24<br/>security list: SSH in, all out"]
+            subgraph subnet["Public subnet 10.0.1.0/24<br/>security list: SSH, HTTP(S) in, all out"]
                 vm["Ampere A1 VM<br/>2 OCPU · 12 GB RAM<br/>50 GB boot · Ubuntu 24.04"]
             end
         end
@@ -29,22 +29,22 @@ flowchart LR
     tf -->|OCI API| vcn
     tf -->|Cloudflare API| dns
     tf <-->|state + lock| state
-    vm -.->|public IP feeds the record| dns
+    vm -.->|public IP feeds the records| dns
     client -->|1. resolve name| dns
     client -->|2. SSH on port 22| igw
     igw --> vm
 ```
 
 - **Compute:** one Ampere A1 (Arm) VM with **2 OCPUs, 12 GB RAM and a 50 GB boot volume**, running Ubuntu 24.04.
-- **Network:** a dedicated VCN and public subnet. The security list allows SSH in and all traffic out, and logins are key-only: the keys in `ssh_public_keys`, YubiKey `sk-` keys included.
-- **DNS:** a Cloudflare A record (`dns_name`) that follows the VM's public IP. It is DNS-only, so SSH goes straight to the VM.
+- **Network:** a dedicated VCN and public subnet. The security list allows SSH, HTTP and HTTPS in and all traffic out, and logins are key-only: the keys in `ssh_public_keys`, YubiKey `sk-` keys included.
+- **DNS:** a Cloudflare A record (`dns_name`) that follows the VM's public IP, plus one for each website in `service_dns_names`. They are DNS-only, so SSH goes straight to the VM and the websites get their HTTPS certificates on the VM itself.
 - **State:** a private, versioned Object Storage bucket with automatic locking, created by a separate `bootstrap/` config.
 
 All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs, 12 GB), 50 of the 200 GB of block storage, and a few KB of the 20 GB of Object Storage.
 
 ## What this project demonstrates
 
-- **Two providers wired together.** The DNS record's content is the VM's IP, so if the VM is rebuilt, the same `apply` updates DNS.
+- **Two providers wired together.** The DNS records' content is the VM's IP, so if the VM is rebuilt, the same `apply` updates DNS.
 - **Guard rails as code.** Variable validation rejects anything beyond the free tier and catches malformed IDs before any API call is made.
 - **Remote state done properly.** The bucket is bootstrapped separately (the chicken-and-egg problem), versioned for recovery, locked against concurrent runs and protected with `prevent_destroy`.
 - **Working around real platform limits.** OCI's API rejects FIDO2 (`sk-`) SSH keys, so keys go in via cloud-init `user_data`. `ignore_changes` stops new image releases from forcing a rebuild.
@@ -62,7 +62,7 @@ All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs
 | `main.tf` | `locals`: shared derived values such as the compartment and tags |
 | `network.tf` | VCN, internet gateway, route table, security list, subnet |
 | `compute.tf` | Image lookup and the VM itself |
-| `dns.tf` | Cloudflare A record pointing at the VM (DNS only, not proxied) |
+| `dns.tf` | Cloudflare A records pointing at the VM, its own and one per website (DNS only, not proxied) |
 | `outputs.tf` | Values printed after `apply` (IP, hostname, SSH command) |
 | `terraform.tfvars.example`, `backend.hcl.example` | Templates for your personal values |
 | `bootstrap/` | A separate, run-once config that creates the state bucket |
@@ -211,7 +211,7 @@ terraform apply -replace=oci_core_instance.arm_vm   # rebuild the VM on purpose 
 - **SSH keys are fixed at launch.** They reach the VM through cloud-init `user_data` (OCI's own `ssh_authorized_keys` field rejects YubiKey `sk-` keys), and OCI rejects changes to `user_data` after an instance starts. To add or remove a key later, edit `~/.ssh/authorized_keys` on the VM, or update `ssh_public_keys` and rebuild with `-replace`.
 - **SSH is open to the whole internet**, so expect constant bot login attempts in the logs. They fail because the image allows key-only logins. To narrow access later, set `ssh_allowed_cidr`, or put the VM behind Tailscale or the OCI Bastion service.
 - **Idle reclamation.** Oracle may reclaim an Always Free VM if, over 7 days, its 95th-percentile CPU, network *and* memory utilisation are all under 20%.
-- **Opening more ports later** (e.g. 80/443) takes two changes: a security list rule in `network.tf` *and* the VM's own firewall. Oracle's Ubuntu images ship with restrictive `iptables` rules that allow only SSH.
+- **The VM has its own firewall too.** Oracle's Ubuntu images ship with restrictive `iptables` rules that allow only SSH, so ports 80 and 443 also have to be opened on the VM itself. Any other port takes both changes: a security list rule in `network.tf` *and* the VM's firewall.
 - **State locking.** `plan` and `apply` hold a lock in the bucket, so two runs can't collide. If a run is killed and leaves a stale lock, the next run prints its ID; clear it with `terraform force-unlock <LOCK_ID>`. Previous state versions are under the bucket's object version history in the Console.
 - **The image is chosen once.** `compute.tf` ignores newer Ubuntu images after the first apply, so they don't trigger a rebuild. Use `-replace` when you want one.
 

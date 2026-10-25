@@ -15,6 +15,7 @@ ssh_public_keys = [
 # compartment_ocid          = null             # null = root compartment
 # oci_config_profile        = "DEFAULT"
 # ssh_allowed_cidr          = "0.0.0.0/0"
+# service_dns_names         = []               # websites on the VM, e.g. ["shorti.example.com"]
 # availability_domain_index = 0
 # instance_ocpus            = 2
 # instance_memory_gbs       = 12
