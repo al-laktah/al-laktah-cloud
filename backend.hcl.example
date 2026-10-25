@@ -1,0 +1,8 @@
+# Partial backend configuration, passed with: terraform init -backend-config=backend.hcl
+# Generate the real one (git-ignored) from bootstrap/:
+#   (cd bootstrap && terraform output -raw backend_config) > backend.hcl
+
+bucket              = "terraform-state"
+namespace           = "<object-storage-namespace>"
+region              = "eu-frankfurt-1"
+config_file_profile = "DEFAULT"

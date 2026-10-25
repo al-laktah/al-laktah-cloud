@@ -74,9 +74,8 @@ variable "cloudflare_zone_id" {
 }
 
 variable "dns_name" {
-  description = "Fully qualified hostname to point at the VM."
+  description = "Fully qualified hostname to point at the VM, e.g. \"cloud.example.com\"."
   type        = string
-  default     = "cloud.al-laktah.com"
 }
 
 # ---------------------------------------------------------------------------
@@ -130,14 +129,9 @@ variable "boot_volume_size_gbs" {
   }
 }
 
-# Public keys aren't secret, so they're safe to keep in the repo.
 variable "ssh_public_keys" {
-  description = "SSH public keys authorised for the \"ubuntu\" user."
+  description = "SSH public keys authorised for the \"ubuntu\" user, one key per string. Security-key (sk-*) keys are supported."
   type        = list(string)
-  default = [
-    "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29tAAAAIP40Nwvjzo6LbEToCY5wBOPEPx4ktO2kHD9CLOBHcQOXAAAAE3NzaDpibGsteXViaWtleS1zc2g= blk-yubikey-ssh",
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKfzm2vlpZcixsegV2xRemUyDrq2SQvwXHYPz5L7zau8",
-  ]
 
   validation {
     condition     = length(var.ssh_public_keys) > 0

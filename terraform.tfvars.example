@@ -3,14 +3,18 @@
 
 tenancy_ocid       = "ocid1.tenancy.oc1..aaaaaaaa..."
 cloudflare_zone_id = "0123456789abcdef0123456789abcdef" # dashboard -> domain -> Overview -> API
+dns_name           = "cloud.example.com"
+
+# Public keys allowed to SSH in as "ubuntu". Security-key (sk-*) keys work too.
+ssh_public_keys = [
+  "ssh-ed25519 AAAA... you@laptop",
+]
 
 # Optional overrides (defaults shown):
 # region                    = "eu-frankfurt-1" # defaults to the region in ~/.oci/config
 # compartment_ocid          = null             # null = root compartment
 # oci_config_profile        = "DEFAULT"
 # ssh_allowed_cidr          = "0.0.0.0/0"
-# ssh_public_keys           = [...]            # defaults are in variables.tf
-# dns_name                  = "cloud.al-laktah.com"
 # availability_domain_index = 0
 # instance_ocpus            = 2
 # instance_memory_gbs       = 12

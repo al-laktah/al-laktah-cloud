@@ -2,21 +2,27 @@
 
 Oracle Cloud **Always Free** infrastructure, managed with Terraform.
 
-Current contents: one Ampere A1 (Arm) VM, **2 OCPUs / 12 GB RAM / 50 GB boot volume**, running Ubuntu 24.04 in its own public network. SSH is open to the internet, and only the keys in `ssh_public_keys` (`variables.tf`) can log in. A Cloudflare A record, `cloud.al-laktah.com`, follows the VM's public IP. That uses the whole Always Free A1 allowance (2 OCPUs, 12 GB) and 50 of the 200 GB of free block storage.
+Current contents: one Ampere A1 (Arm) VM, **2 OCPUs / 12 GB RAM / 50 GB boot volume**, running Ubuntu 24.04 in its own public network. SSH is open to the internet, and only the keys in `ssh_public_keys` can log in. A Cloudflare A record (`dns_name`) follows the VM's public IP. Terraform state lives in a private, versioned OCI Object Storage bucket.
+
+All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs, 12 GB), 50 of the 200 GB of block storage, and a few KB of the 20 GB of Object Storage.
 
 ## Files
 
 | File | What it does |
 | --- | --- |
-| `versions.tf` | Pins the Terraform and OCI provider versions |
+| `versions.tf` | Pins the Terraform and provider versions |
+| `backend.tf` | Stores state in OCI Object Storage (tenancy-specific settings come from `backend.hcl`) |
 | `providers.tf` | Configures the OCI provider (auth from `~/.oci/config`) and the Cloudflare provider (auth from `CLOUDFLARE_API_TOKEN`) |
 | `variables.tf` | Inputs, with validation that keeps you inside the free limits |
 | `main.tf` | `locals`: shared derived values such as the compartment and tags |
 | `network.tf` | VCN, internet gateway, route table, security list, subnet |
 | `compute.tf` | Image lookup and the VM itself |
 | `dns.tf` | Cloudflare A record pointing at the VM (DNS only, not proxied) |
-| `outputs.tf` | Values printed after `apply` (IP, SSH command) |
-| `terraform.tfvars.example` | Template for your personal values |
+| `outputs.tf` | Values printed after `apply` (IP, hostname, SSH command) |
+| `terraform.tfvars.example`, `backend.hcl.example` | Templates for your personal values |
+| `bootstrap/` | A separate, run-once config that creates the state bucket |
+
+Personal values live only in git-ignored files: `terraform.tfvars`, `bootstrap/terraform.tfvars` and `backend.hcl`. Secrets never touch the repo: the OCI API key stays in `~/.oci`, and the Cloudflare token stays in your password manager.
 
 ## One-time setup
 
@@ -56,18 +62,38 @@ Terraform signs its API calls to OCI with a key pair.
 ### 3. Create a Cloudflare API token
 
 1. In the Cloudflare dashboard, open **My Profile**, then **API Tokens**, then **Create Token**, and use the **Edit zone DNS** template.
-2. Under **Zone Resources**, choose **Include → Specific zone → al-laktah.com**, then create the token.
-3. Save the token in 1Password, e.g. as an API Credential item named `Cloudflare Terraform` in the Personal vault. Don't put it in any file in this repo.
+2. Under **Zone Resources**, choose **Include → Specific zone → your domain**, then create the token.
+3. Save the token in a password manager (e.g. a 1Password API Credential item). Don't put it in any file in this repo.
 
 ### 4. Fill in your variables
 
 ```sh
 cp terraform.tfvars.example terraform.tfvars
+cp bootstrap/terraform.tfvars.example bootstrap/terraform.tfvars
 ```
 
-Fill in `tenancy_ocid` (the same value as `tenancy=` in `~/.oci/config`) and `cloudflare_zone_id` (the domain's **Overview** page, **API** section). `terraform.tfvars` is git-ignored.
+- `terraform.tfvars` needs:
+  - `tenancy_ocid`: the same value as `tenancy=` in `~/.oci/config`
+  - `cloudflare_zone_id`: on the domain's **Overview** page, in the **API** section
+  - `dns_name`
+  - `ssh_public_keys`
+- `bootstrap/terraform.tfvars` needs `tenancy_ocid` and `region`.
 
-Check the SSH keys in `ssh_public_keys` (`variables.tf`) **before the first apply**: they are baked into the VM when it is created (see Gotchas).
+Check `ssh_public_keys` **before the first apply**: the keys are baked into the VM when it is created (see Gotchas).
+
+### 5. Create the state bucket
+
+Terraform can't store state in a bucket that doesn't exist yet, so `bootstrap/` creates it, using local state of its own:
+
+```sh
+cd bootstrap
+terraform init
+terraform apply
+terraform output -raw backend_config > ../backend.hcl
+cd ..
+```
+
+The bucket is private and versioned, so every past state is kept and can be restored, and `prevent_destroy` protects it from deletion. `bootstrap/terraform.tfstate` is tiny and safe to lose. If it goes missing, re-adopt the bucket with `terraform import oci_objectstorage_bucket.tfstate n/<namespace>/b/<bucket>`.
 
 ## The Terraform workflow
 
@@ -80,28 +106,39 @@ export CLOUDFLARE_API_TOKEN=$(op read "op://Personal/Cloudflare Terraform/creden
 `op://` references only allow letters, digits, `-`, `_`, `.` and spaces in vault, item and field names. If a name has anything else (e.g. parentheses), rename the item or use its ID instead (`op item list` shows IDs).
 
 ```sh
-terraform init        # download the OCI provider and create .terraform.lock.hcl (commit the lock file)
-terraform fmt         # format the code
-terraform validate    # check syntax and types; no API calls
-terraform plan        # show what WOULD change; changes nothing
-terraform apply       # make the changes (asks for confirmation)
-terraform output      # print outputs again later
-terraform destroy     # delete everything this config created
+terraform init -backend-config=backend.hcl   # download providers and connect to the state bucket (commit .terraform.lock.hcl)
+terraform fmt                                # format the code
+terraform validate                           # check syntax and types; no API calls
+terraform plan -out=tfplan                   # show what WOULD change and save it; changes nothing
+terraform apply tfplan                       # make exactly the saved changes
+terraform output                             # print outputs again later
+terraform destroy                            # delete everything this config created (the state bucket is untouched)
 ```
 
-After `apply`, connect with:
+### Moving existing local state into the bucket
+
+If you already applied with local state (a `terraform.tfstate` in this folder), copy it into the bucket once:
+
+```sh
+terraform init -migrate-state -backend-config=backend.hcl   # answer "yes" to copy the state
+terraform plan                                              # must say "No changes"
+rm terraform.tfstate terraform.tfstate.backup               # the bucket is now the only copy Terraform uses
+```
+
+### Connecting
 
 ```sh
 $(terraform output -raw ssh_command)
 ```
 
-If your private key isn't one SSH tries by default (for example the YubiKey handle `~/.ssh/blk-yubikey-ssh`), add `-i <private key>`, or add a host entry to `~/.ssh/config`:
+If your private key isn't one SSH tries by default (for example a YubiKey `sk` key handle), add `-i <private key>`, or add a host entry to `~/.ssh/config`:
 
 ```
 Host oci-arm
-  HostName cloud.al-laktah.com
+  HostName cloud.example.com
   User ubuntu
-  IdentityFile ~/.ssh/blk-yubikey-ssh
+  IdentityFile ~/.ssh/<your private key>
+  IdentitiesOnly yes
 ```
 
 Some useful commands for learning:
@@ -116,16 +153,16 @@ terraform apply -replace=oci_core_instance.arm_vm   # rebuild the VM on purpose 
 ## Gotchas
 
 - **"Out of host capacity"** means there is no free A1 capacity in that availability domain right now. Set `availability_domain_index = 1` (or `2`, if your region has 3 ADs), or retry later. Upgrading the account to Pay As You Go usually fixes this, and resources within the Always Free limits remain free.
+- **Keep `availability_domain_index` matching where the VM actually is.** An instance can't move between availability domains, so changing it means destroy and recreate.
 - **SSH keys are fixed at launch.** They reach the VM through cloud-init `user_data` (OCI's own `ssh_authorized_keys` field rejects YubiKey `sk-` keys), and OCI rejects changes to `user_data` after an instance starts. To add or remove a key later, edit `~/.ssh/authorized_keys` on the VM, or update `ssh_public_keys` and rebuild with `-replace`.
 - **SSH is open to the whole internet**, so expect constant bot login attempts in the logs. They fail because the image allows key-only logins. To narrow access later, set `ssh_allowed_cidr`, or put the VM behind Tailscale or the OCI Bastion service.
 - **Idle reclamation.** Oracle may reclaim an Always Free VM if, over 7 days, its 95th-percentile CPU, network *and* memory utilisation are all under 20%.
 - **Opening more ports later** (e.g. 80/443) takes two changes: a security list rule in `network.tf` *and* the VM's own firewall. Oracle's Ubuntu images ship with restrictive `iptables` rules that allow only SSH.
-- **State is local** (`terraform.tfstate`, git-ignored). It is Terraform's record of what it created. Don't delete it, or Terraform loses track of your resources. A good next step is moving it to OCI Object Storage.
+- **State locking.** `plan` and `apply` hold a lock in the bucket, so two runs can't collide. If a run is killed and leaves a stale lock, the next run prints its ID; clear it with `terraform force-unlock <LOCK_ID>`. Previous state versions are under the bucket's object version history in the Console.
 - **The image is chosen once.** `compute.tf` ignores newer Ubuntu images after the first apply, so they don't trigger a rebuild. Use `-replace` when you want one.
 
 ## Ideas for next steps
 
-- Remote state in an Object Storage bucket (free: 20 GB)
 - A reserved public IP, so the address survives a rebuild
 - `cloud-init` user data to install packages on first boot
 - A separate block volume for data

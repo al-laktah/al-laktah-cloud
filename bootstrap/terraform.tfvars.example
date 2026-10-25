@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars (which is git-ignored) and fill in:
+#   cp terraform.tfvars.example terraform.tfvars
+
+tenancy_ocid = "ocid1.tenancy.oc1..aaaaaaaa..."
+region       = "eu-frankfurt-1" # your home region
+
+# Optional overrides (defaults shown):
+# oci_config_profile = "DEFAULT"
+# bucket_name        = "terraform-state"
