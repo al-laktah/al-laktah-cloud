@@ -1,0 +1,2 @@
+# Keep the rendered secrets out of the build context.
+.env

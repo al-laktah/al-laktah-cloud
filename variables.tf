@@ -141,6 +141,12 @@ variable "boot_volume_size_gbs" {
   }
 }
 
+variable "backup_bucket_name" {
+  description = "Bucket the VM may write backups to (created by bootstrap/). Must match backup_bucket_name there."
+  type        = string
+  default     = "backups"
+}
+
 variable "ssh_public_keys" {
   description = "SSH public keys authorised for the \"ubuntu\" user, one key per string. Security-key (sk-*) keys are supported."
   type        = list(string)

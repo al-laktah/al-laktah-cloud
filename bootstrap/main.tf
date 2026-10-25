@@ -50,3 +50,25 @@ resource "oci_objectstorage_bucket" "tfstate" {
     prevent_destroy = true
   }
 }
+
+# Encrypted restic backups of the services' data (services/backup). It lives here,
+# not in the main config, so it outlives the VM: restoring after a rebuild is
+# exactly when it's needed. Versioning stays off because restic keeps its own
+# history and prunes old data itself; versioning would keep the pruned data forever.
+resource "oci_objectstorage_bucket" "backups" {
+  compartment_id = var.tenancy_ocid
+  namespace      = data.oci_objectstorage_namespace.this.namespace
+  name           = var.backup_bucket_name
+  access_type    = "NoPublicAccess"
+  storage_tier   = "Standard"
+  versioning     = "Disabled"
+
+  freeform_tags = {
+    "managed-by" = "terraform"
+    "project"    = "al-laktah-cloud"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}

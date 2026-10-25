@@ -24,3 +24,9 @@ variable "bucket_name" {
   type        = string
   default     = "terraform-state"
 }
+
+variable "backup_bucket_name" {
+  description = "Name of the bucket for service backups. Must match backup_bucket_name in the main config."
+  type        = string
+  default     = "backups"
+}

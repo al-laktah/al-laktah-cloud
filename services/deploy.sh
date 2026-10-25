@@ -2,9 +2,9 @@
 # Deploys one service stack to the VM:  services/deploy.sh <service>
 #
 #   1. Syncs services/<service>/ to ~/services/<service>/ on the VM.
-#   2. Writes ~/services/<service>/.env: DOMAIN from config.env, plus .env.tpl with
-#      its op:// references filled in by 1Password (`op inject`). The secrets go
-#      straight over SSH and never touch the local disk.
+#   2. Writes ~/services/<service>/.env: the shared settings from config.env, plus
+#      .env.tpl with its op:// references filled in by 1Password (`op inject`).
+#      The secrets go straight over SSH and never touch the local disk.
 #   3. Runs `docker compose up -d` there (and reloads Caddy's config for edge).
 set -euo pipefail
 
@@ -12,12 +12,16 @@ cd "$(dirname "$0")"
 service="${1:?usage: services/deploy.sh <service>}"
 [[ -f "$service/compose.yaml" ]] || { echo "no stack at services/$service/compose.yaml" >&2; exit 1; }
 
-source ./config.env # DEPLOY_HOST, DEPLOY_SSH_KEY, DOMAIN
+source ./config.env # DEPLOY_HOST, DEPLOY_SSH_KEY, plus the shared settings
 
 # Render secrets first, so a failed `op inject` can't leave a half-written .env behind.
-env_content="DOMAIN=$DOMAIN"
+# Every setting in config.env except the DEPLOY_* ones goes to every stack.
+env_content=""
+for name in $(sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' config.env); do
+  if [[ $name != DEPLOY_* ]]; then env_content+="$name=${!name}"$'\n'; fi
+done
 if [[ -f "$service/.env.tpl" ]]; then
-  env_content+=$'\n'"$(op inject -i "$service/.env.tpl")"
+  env_content+="$(op inject -i "$service/.env.tpl")"
 fi
 
 # Reuse one SSH connection for the whole deploy, so a hardware key is touched once.
@@ -46,7 +50,8 @@ remote "mkdir -p $dir && { docker network inspect web >/dev/null 2>&1 || docker 
 rsync -a --delete --exclude .env --exclude .env.tpl -e "ssh ${ssh_opts[*]}" "$service/" "$DEPLOY_HOST:$dir/"
 printf '%s\n' "$env_content" | remote "umask 077 && cat > $dir/.env"
 
-remote "cd $dir && docker compose pull --quiet && docker compose up -d --remove-orphans"
+# Stacks with a Dockerfile (like backup) are built on the VM instead of pulled.
+remote "cd $dir && docker compose pull --quiet --ignore-buildable && docker compose up -d --build --remove-orphans"
 
 # `up -d` leaves a running Caddy alone when only its config files changed.
 if [[ $service == edge ]]; then

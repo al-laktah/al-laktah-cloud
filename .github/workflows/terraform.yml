@@ -45,15 +45,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Each stack gets a stand-in .env: DOMAIN, plus every variable its .env.tpl
-      # defines with a placeholder value. `${VAR:?}` in compose.yaml then fails the
-      # check if a stack needs a secret its template doesn't provide.
+      # Each stack gets a stand-in .env, like the one deploy.sh writes: the shared
+      # settings from config.env.example, plus every variable its .env.tpl defines
+      # with a placeholder value. `${VAR:?}` in compose.yaml then fails the check
+      # if a stack needs a setting or secret that nothing provides.
       - name: Validate service stacks
         run: |
           for dir in services/*/; do
             [ -f "${dir}compose.yaml" ] || continue # not a stack this repo deploys
             {
-              echo "DOMAIN=example.com"
+              grep -E '^[A-Z_][A-Z0-9_]*=' services/config.env.example | grep -v '^DEPLOY_' | sed -E 's/[[:space:]]*#.*$//'
               if [ -f "$dir.env.tpl" ]; then sed -E 's/\{\{ *op:\/\/[^}]*\}\}/ci-placeholder/' "$dir.env.tpl"; fi
             } > "$dir.env"
             (cd "$dir" && docker compose config --quiet)

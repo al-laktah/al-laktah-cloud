@@ -1,0 +1,54 @@
+# Nightly encrypted backups of every service's data to OCI Object Storage, with
+# restic. The VM signs in to OCI as itself (an instance principal, see backup.tf),
+# so no cloud credentials are stored here. The only secret is restic's password.
+name: backup
+
+services:
+  backup:
+    build: .
+    image: services/backup:local
+    restart: unless-stopped
+    init: true # forwards `docker stop` to the sleeping scheduler
+    hostname: backup # restic groups snapshots by host, so keep it stable
+    environment:
+      BACKUP_TIME: ${BACKUP_TIME:-02:30}
+      BACKUP_PING_URL: ${BACKUP_PING_URL:-}
+      RESTIC_REPOSITORY: rclone:oos:${BACKUP_BUCKET:?set in services/config.env}/restic
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD:?missing from .env.tpl}
+      RESTIC_CACHE_DIR: /cache
+      # rclone remote "oos": OCI Object Storage, signed in as the VM itself
+      RCLONE_CONFIG_OOS_TYPE: oracleobjectstorage
+      RCLONE_CONFIG_OOS_PROVIDER: instance_principal_auth
+      RCLONE_CONFIG_OOS_NAMESPACE: ${OCI_NAMESPACE:?set in services/config.env}
+      RCLONE_CONFIG_OOS_COMPARTMENT: ${OCI_COMPARTMENT_OCID:?set in services/config.env}
+      RCLONE_CONFIG_OOS_REGION: ${OCI_REGION:?set in services/config.env}
+      # pg_dump connects to Outline's Postgres over that stack's network
+      PGHOST: postgres
+      PGUSER: outline
+      PGDATABASE: outline
+      PGPASSWORD: ${POSTGRES_PASSWORD:?missing from .env.tpl}
+    volumes:
+      - cache:/cache
+      # The other stacks' data. Read-write only where SQLite needs its lock files.
+      - outline-files:/src/outline-files:ro
+      - pocket-id-data:/src/pocket-id
+      - shorti-data:/src/shorti
+    networks:
+      - outline
+
+volumes:
+  cache:
+  outline-files:
+    external: true
+    name: outline_files
+  pocket-id-data:
+    external: true
+    name: pocket-id_data
+  shorti-data:
+    external: true
+    name: shorti_shorti-data
+
+networks:
+  outline:
+    external: true
+    name: outline_default

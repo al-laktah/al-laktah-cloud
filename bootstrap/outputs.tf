@@ -8,6 +8,11 @@ output "bucket_name" {
   value       = oci_objectstorage_bucket.tfstate.name
 }
 
+output "backup_bucket_name" {
+  description = "Name of the backups bucket."
+  value       = oci_objectstorage_bucket.backups.name
+}
+
 # Ready-made partial backend configuration for the main config:
 #   terraform output -raw backend_config > ../backend.hcl
 output "backend_config" {
