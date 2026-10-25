@@ -1,0 +1,27 @@
+# Provider plugins and module cache (recreated by `terraform init`)
+.terraform/
+
+# State holds real resource IDs, IPs and sometimes secrets. Never commit it.
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Your personal values
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Local overrides
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Saved plans
+*.tfplan
+tfplan
+
+# Never commit OCI API keys
+*.pem
+CLAUDE.md
