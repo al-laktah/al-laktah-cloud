@@ -83,6 +83,7 @@ All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs
 | `outputs.tf` | Values printed after `apply` (IP, hostname, SSH command) |
 | `terraform.tfvars.example`, `backend.hcl.example` | Templates for your personal values |
 | `bootstrap/` | A separate config for the long-lived buckets, Terraform state and backups, that must outlive the VM |
+| `host/setup-vm.sh` | Prepares the VM itself for the services: updates, its own firewall, Docker, log rotation |
 | `services/` | Docker Compose stacks for the VM (Caddy, Pocket ID, Outline, backups) and `deploy.sh`. See [services/README.md](services/README.md) |
 | `.github/workflows/terraform.yml` | CI: `fmt` and `validate` for both Terraform configs, and `docker compose config` for every stack |
 
@@ -229,7 +230,7 @@ terraform apply -replace=oci_core_instance.arm_vm   # rebuild the VM on purpose 
 - **SSH keys are fixed at launch.** They reach the VM through cloud-init `user_data` (OCI's own `ssh_authorized_keys` field rejects YubiKey `sk-` keys), and OCI rejects changes to `user_data` after an instance starts. To add or remove a key later, edit `~/.ssh/authorized_keys` on the VM, or update `ssh_public_keys` and rebuild with `-replace`.
 - **SSH is open to the whole internet**, so expect constant bot login attempts in the logs. They fail because the image allows key-only logins. To narrow access later, set `ssh_allowed_cidr`, or put the VM behind Tailscale or the OCI Bastion service.
 - **Idle reclamation.** Oracle may reclaim an Always Free VM if, over 7 days, its 95th-percentile CPU, network *and* memory utilisation are all under 20%.
-- **The VM has its own firewall too.** Oracle's Ubuntu images ship with restrictive `iptables` rules that allow only SSH, so ports 80 and 443 also have to be opened on the VM itself. Any other port takes both changes: a security list rule in `network.tf` *and* the VM's firewall.
+- **The VM has its own firewall too.** Oracle's Ubuntu images ship with restrictive `iptables` rules that allow only SSH, so ports 80 and 443 also have to be opened on the VM itself (`host/setup-vm.sh` does that). Any other port takes both changes: a security list rule in `network.tf` *and* the VM's firewall.
 - **State locking.** `plan` and `apply` hold a lock in the bucket, so two runs can't collide. If a run is killed and leaves a stale lock, the next run prints its ID; clear it with `terraform force-unlock <LOCK_ID>`. Previous state versions are under the bucket's object version history in the Console.
 - **The image is chosen once.** `compute.tf` ignores newer Ubuntu images after the first apply, so they don't trigger a rebuild. Use `-replace` when you want one.
 

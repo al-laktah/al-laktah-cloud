@@ -12,14 +12,15 @@ cd "$(dirname "$0")"
 service="${1:?usage: services/deploy.sh <service>}"
 [[ -f "$service/compose.yaml" ]] || { echo "no stack at services/$service/compose.yaml" >&2; exit 1; }
 
+# shellcheck source-path=SCRIPTDIR source=config.env.example
 source ./config.env # DEPLOY_HOST, DEPLOY_SSH_KEY, plus the shared settings
 
 # Render secrets first, so a failed `op inject` can't leave a half-written .env behind.
 # Every setting in config.env except the DEPLOY_* ones goes to every stack.
 env_content=""
-for name in $(sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' config.env); do
+while read -r name; do
   if [[ $name != DEPLOY_* ]]; then env_content+="$name=${!name}"$'\n'; fi
-done
+done < <(sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' config.env)
 if [[ -f "$service/.env.tpl" ]]; then
   env_content+="$(op inject -i "$service/.env.tpl")"
 fi
@@ -31,6 +32,8 @@ if [[ -n ${DEPLOY_SSH_KEY:-} ]]; then
   # may reject all of them before the right one comes up.
   ssh_opts+=(-i "$DEPLOY_SSH_KEY" -o IdentitiesOnly=yes)
 fi
+# The commands are built here on purpose, e.g. with $dir filled in before they're sent.
+# shellcheck disable=SC2029
 remote() { ssh "${ssh_opts[@]}" "$DEPLOY_HOST" "$@"; }
 
 dir="services/$service" # relative to the remote home directory
@@ -39,7 +42,7 @@ dir="services/$service" # relative to the remote home directory
 # --delete would wipe their source. If SSH itself fails, set -e stops the deploy here.
 is_checkout=$(remote "if test -d $dir/.git; then echo yes; else echo no; fi")
 if [[ $is_checkout == yes ]]; then
-  echo "~/$dir on the VM is a git checkout, refusing to sync over it" >&2
+  echo "$dir in the VM's home directory is a git checkout, refusing to sync over it" >&2
   exit 1
 fi
 

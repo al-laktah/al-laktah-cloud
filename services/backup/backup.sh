@@ -9,7 +9,14 @@ ping() {
   # stop, the failure you would otherwise never notice.
   if [ -n "${BACKUP_PING_URL:-}" ]; then wget -q -T 10 -O /dev/null "$BACKUP_PING_URL$1" || true; fi
 }
-trap 'status=$?; if [ "$status" -ne 0 ]; then echo "== backup FAILED (exit $status)"; ping /fail; fi' EXIT
+on_exit() {
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    echo "== backup FAILED (exit $status)"
+    ping /fail
+  fi
+}
+trap on_exit EXIT
 
 sqlite_backup() {
   # SQLite's online backup is consistent even while the app is writing. It runs as

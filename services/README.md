@@ -20,7 +20,7 @@ Docker Compose stacks that run on the VM, all behind one Caddy edge proxy.
 
 ## Prerequisites
 
-- The VM is prepared by `setup-vm.sh`: Docker with the Compose plugin, the `ubuntu` user in the `docker` group, ports 80/443 open in the VM's firewall, and log rotation.
+- The VM is prepared with [`host/setup-vm.sh`](../host/setup-vm.sh). It installs updates (with automatic reboots for security fixes), opens ports 80/443 in the VM's own firewall, installs Docker with the Compose plugin (the `ubuntu` user joins the `docker` group), turns on log rotation and creates the `web` network. Run it once on a new VM, from your laptop: `ssh <host> 'sudo bash -s' < host/setup-vm.sh`. Running it again is safe.
 - The 1Password CLI (`op`), signed in on your laptop.
 - `services/config.env`: run `cp services/config.env.example services/config.env`, then fill in `DEPLOY_HOST`, `DEPLOY_SSH_KEY` and `DOMAIN`. `DEPLOY_SSH_KEY` is the key that `deploy.sh` offers, and the only one. It can be a private key file, a YubiKey handle, or the `.pub` file of a key held by an agent such as 1Password.
 
