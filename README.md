@@ -1,10 +1,55 @@
 # al-laktah-cloud
 
-Oracle Cloud **Always Free** infrastructure, managed with Terraform.
+[![Terraform](https://github.com/al-laktah/al-laktah-cloud/actions/workflows/terraform.yml/badge.svg)](https://github.com/al-laktah/al-laktah-cloud/actions/workflows/terraform.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Current contents: one Ampere A1 (Arm) VM, **2 OCPUs / 12 GB RAM / 50 GB boot volume**, running Ubuntu 24.04 in its own public network. SSH is open to the internet, and only the keys in `ssh_public_keys` can log in. A Cloudflare A record (`dns_name`) follows the VM's public IP. Terraform state lives in a private, versioned OCI Object Storage bucket.
+My personal cloud on Oracle Cloud's **Always Free** tier, built entirely with Terraform: an Arm VM, its network, a Cloudflare DNS record and remote state, at no cost.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    tf["Terraform CLI<br/>(laptop or CI)"]
+    client["SSH client"]
+
+    subgraph cloudflare["Cloudflare"]
+        dns["A record<br/>cloud.example.com<br/>DNS only"]
+    end
+
+    subgraph oci["Oracle Cloud · home region · Always Free"]
+        state[("Object Storage bucket<br/>Terraform state<br/>private · versioned · locked")]
+        subgraph vcn["VCN 10.0.0.0/16"]
+            igw["Internet gateway"]
+            subgraph subnet["Public subnet 10.0.1.0/24<br/>security list: SSH in, all out"]
+                vm["Ampere A1 VM<br/>2 OCPU · 12 GB RAM<br/>50 GB boot · Ubuntu 24.04"]
+            end
+        end
+    end
+
+    tf -->|OCI API| vcn
+    tf -->|Cloudflare API| dns
+    tf <-->|state + lock| state
+    vm -.->|public IP feeds the record| dns
+    client -->|1. resolve name| dns
+    client -->|2. SSH on port 22| igw
+    igw --> vm
+```
+
+- **Compute:** one Ampere A1 (Arm) VM with **2 OCPUs, 12 GB RAM and a 50 GB boot volume**, running Ubuntu 24.04.
+- **Network:** a dedicated VCN and public subnet. The security list allows SSH in and all traffic out, and logins are key-only: the keys in `ssh_public_keys`, YubiKey `sk-` keys included.
+- **DNS:** a Cloudflare A record (`dns_name`) that follows the VM's public IP. It is DNS-only, so SSH goes straight to the VM.
+- **State:** a private, versioned Object Storage bucket with automatic locking, created by a separate `bootstrap/` config.
 
 All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs, 12 GB), 50 of the 200 GB of block storage, and a few KB of the 20 GB of Object Storage.
+
+## What this project demonstrates
+
+- **Two providers wired together.** The DNS record's content is the VM's IP, so if the VM is rebuilt, the same `apply` updates DNS.
+- **Guard rails as code.** Variable validation rejects anything beyond the free tier and catches malformed IDs before any API call is made.
+- **Remote state done properly.** The bucket is bootstrapped separately (the chicken-and-egg problem), versioned for recovery, locked against concurrent runs and protected with `prevent_destroy`.
+- **Working around real platform limits.** OCI's API rejects FIDO2 (`sk-`) SSH keys, so keys go in via cloud-init `user_data`. `ignore_changes` stops new image releases from forcing a rebuild.
+- **No secrets in git.** Credentials come from `~/.oci` and a password manager at runtime. Personal values live in git-ignored files, with committed `.example` templates.
+- **CI.** Every push and pull request runs `terraform fmt` and `terraform validate`, with no cloud credentials needed.
 
 ## Files
 
@@ -21,6 +66,7 @@ All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs
 | `outputs.tf` | Values printed after `apply` (IP, hostname, SSH command) |
 | `terraform.tfvars.example`, `backend.hcl.example` | Templates for your personal values |
 | `bootstrap/` | A separate, run-once config that creates the state bucket |
+| `.github/workflows/terraform.yml` | CI: `fmt` check and `validate` for both configs |
 
 Personal values live only in git-ignored files: `terraform.tfvars`, `bootstrap/terraform.tfvars` and `backend.hcl`. Secrets never touch the repo: the OCI API key stays in `~/.oci`, and the Cloudflare token stays in your password manager.
 

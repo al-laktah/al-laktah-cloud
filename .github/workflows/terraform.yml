@@ -1,0 +1,40 @@
+# Checks formatting and validates both Terraform configs. Needs no cloud
+# credentials: `init -backend=false` skips the state bucket, and `validate`
+# never calls the OCI or Cloudflare APIs.
+name: Terraform
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: fmt and validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.17.0"
+          terraform_wrapper: false
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive -diff
+
+      # -lockfile=readonly fails the build if the committed .terraform.lock.hcl
+      # doesn't cover the providers, instead of silently rewriting it.
+      - name: Validate main config
+        run: |
+          terraform init -backend=false -input=false -lockfile=readonly
+          terraform validate
+
+      - name: Validate bootstrap config
+        working-directory: bootstrap
+        run: |
+          terraform init -backend=false -input=false -lockfile=readonly
+          terraform validate
