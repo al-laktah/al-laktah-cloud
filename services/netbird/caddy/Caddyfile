@@ -1,0 +1,21 @@
+# NetBird's own Caddy. {$DOMAIN} comes from services/config.env. The routes follow
+# the snippet NetBird's installer generates for Caddy.
+netbird.{$DOMAIN} {
+	# Management and signal speak gRPC, which needs HTTP/2 to the server: h2c is
+	# HTTP/2 without TLS, fine inside the stack's network.
+	@grpc header Content-Type application/grpc*
+	handle @grpc {
+		reverse_proxy h2c://server:80
+	}
+
+	# The relay (WebSocket), the API and the sign-in pages.
+	@server path /relay* /ws-proxy/* /api/* /oauth2/*
+	handle @server {
+		reverse_proxy server:80
+	}
+
+	# Everything else is the dashboard.
+	handle {
+		reverse_proxy dashboard:80
+	}
+}

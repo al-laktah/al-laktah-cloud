@@ -48,6 +48,19 @@ endpoints:
     alerts:
       - type: ntfy
 
+  - name: netbird
+    group: sites
+    # The sign-in discovery document, answered by the NetBird server itself, so this
+    # fails if the server is down even while the dashboard still loads.
+    url: "https://netbird.${DOMAIN}/oauth2/.well-known/openid-configuration"
+    interval: 1m
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 5000"
+      - "[CERTIFICATE_EXPIRATION] > 240h"
+    alerts:
+      - type: ntfy
+
   - name: ssh
     group: server
     url: "tcp://cloud.${DOMAIN}:22" # the A1 VM's own DNS name (dns_name in terraform.tfvars)

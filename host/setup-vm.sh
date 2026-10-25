@@ -7,10 +7,13 @@
 # Run it from your laptop:  ssh <host> 'sudo bash -s' < host/setup-vm.sh
 # For a VM that serves no websites (the watchtower), leave ports 80/443 closed:
 #                            ssh <host> 'sudo OPEN_WEB_PORTS=no bash -s' < host/setup-vm.sh
+# For the NetBird VM, also open STUN's UDP port:
+#                            ssh <host> 'sudo OPEN_UDP_PORTS=3478 bash -s' < host/setup-vm.sh
 # Running it again is safe, it only does what is still missing.
 set -euo pipefail
 
 OPEN_WEB_PORTS=${OPEN_WEB_PORTS:-yes}
+OPEN_UDP_PORTS=${OPEN_UDP_PORTS:-} # extra UDP ports to open, separated by spaces
 
 if [ "$(id -u)" -ne 0 ]; then
 	echo "Run this with sudo" >&2
@@ -53,26 +56,40 @@ Unattended-Upgrade::Automatic-Reboot "true";
 Unattended-Upgrade::Automatic-Reboot-Time "04:00";
 EOF
 
+# Oracle's Ubuntu images block everything but SSH on the VM itself, on top of the security list.
+# The rules file is edited by hand instead of saved, so Docker's own rules never end up in it.
+RULES=/etc/iptables/rules.v4
+open_port() { # open_port <tcp|udp> <port>
+	local rule="-p $1 -m state --state NEW -m $1 --dport $2 -j ACCEPT" reject
+	# shellcheck disable=SC2086
+	if ! iptables -C INPUT $rule 2>/dev/null; then
+		reject=$(iptables -L INPUT --line-numbers -n | awk '$2 == "REJECT" { print $1; exit }')
+		iptables -I INPUT "${reject:-1}" $rule
+	fi
+	if [ -f "$RULES" ] && ! grep -qF -- "-A INPUT $rule" "$RULES"; then
+		sed -i "/^-A INPUT -j REJECT/i -A INPUT $rule" "$RULES"
+	fi
+}
+
 if [ "$OPEN_WEB_PORTS" = yes ]; then
 	echo "== Opening ports 80 and 443"
-	# Oracle's Ubuntu images block everything but SSH on the VM itself, on top of the security list.
-	# The rules file is edited by hand instead of saved, so Docker's own rules never end up in it.
-	RULES=/etc/iptables/rules.v4
-	for rule in "-p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT" \
-		"-p tcp -m state --state NEW -m tcp --dport 443 -j ACCEPT" \
-		"-p udp -m state --state NEW -m udp --dport 443 -j ACCEPT"; do
-		# shellcheck disable=SC2086
-		if ! iptables -C INPUT $rule 2>/dev/null; then
-			reject=$(iptables -L INPUT --line-numbers -n | awk '$2 == "REJECT" { print $1; exit }')
-			iptables -I INPUT "${reject:-1}" $rule
-		fi
-		if [ -f "$RULES" ] && ! grep -qF -- "-A INPUT $rule" "$RULES"; then
-			sed -i "/^-A INPUT -j REJECT/i -A INPUT $rule" "$RULES"
-		fi
-	done
+	open_port tcp 80
+	open_port tcp 443
+	open_port udp 443
 else
 	echo "== Leaving ports 80 and 443 closed (OPEN_WEB_PORTS=$OPEN_WEB_PORTS)"
 fi
+
+for port in $OPEN_UDP_PORTS; do
+	case $port in
+	'' | *[!0-9]*)
+		echo "OPEN_UDP_PORTS must be port numbers, got: $port" >&2
+		exit 1
+		;;
+	esac
+	echo "== Opening UDP port $port"
+	open_port udp "$port"
+done
 
 echo "== Installing Docker"
 if ! command -v docker >/dev/null; then

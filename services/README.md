@@ -1,14 +1,15 @@
 # Services
 
-Docker Compose stacks that run on the VM, all behind one Caddy edge proxy.
+Docker Compose stacks that run on the VMs. The main VM's stacks all sit behind one Caddy edge proxy.
 
 | Stack | URL | What it is |
 | --- | --- | --- |
-| `edge/` | | Caddy edge proxy, and the only container that publishes ports (80, 443, 443/udp). Gets HTTPS certificates for every site in `edge/config/sites/` automatically |
+| `edge/` | | Caddy edge proxy, and the only container on the main VM that publishes ports (80, 443, 443/udp). Gets HTTPS certificates for every site in `edge/config/sites/` automatically |
 | `pocket-id/` | `auth.<domain>` | [Pocket ID](https://pocket-id.org): a passkey-only OpenID Connect provider that signs you in to the other services |
 | `outline/` | `wiki.<domain>` | [Outline](https://www.getoutline.com) wiki, with its Postgres and Redis |
 | `backup/` | | Nightly encrypted [restic](https://restic.net) backups of every service's data to OCI Object Storage (see [Backups](#backups)) |
 | `watchtower/` | | Runs on the separate watchtower VM. [Gatus](https://github.com/TwiN/gatus) monitors the sites and certificates, and a daily job verifies the backups read-only (see [Watchtower](#watchtower)) |
+| `netbird/` | `netbird.<domain>` | Runs on the separate NetBird VM. The [NetBird](https://netbird.io) VPN server and dashboard, behind a Caddy of its own (see [NetBird](#netbird)) |
 
 [shorti](https://github.com/al-laktah/shorti) also runs on the VM, but it is built and deployed from its own repo (see below). This repo only provides its DNS record and its site file in `edge/config/sites/`.
 
@@ -182,7 +183,7 @@ Delete `~/restore` when you're done; it holds unencrypted copies of everything.
 
 A separate, Always Free AMD micro VM (`watchtower.tf`) watches the main VM from outside, because a VM that hangs can't report on itself. It runs two containers (`services/watchtower/`):
 
-- **Gatus** checks `wiki`, `auth` and `shorti` over HTTPS and the main VM's SSH port, every minute. It sends an alert to your phone through [ntfy](https://ntfy.sh) after 3 failed checks in a row, or when a certificate has less than 10 days left. It sends another when things recover.
+- **Gatus** checks `wiki`, `auth`, `shorti` and `netbird` over HTTPS and the main VM's SSH port, every minute. It sends an alert to your phone through [ntfy](https://ntfy.sh) after 3 failed checks in a row, or when a certificate has less than 10 days left. It sends another when things recover.
 - **backup-check** verifies the backups every day at 06:00 UTC:
   1. The latest backup is less than 26 hours old.
   2. The repository passes `restic check`, which also downloads and verifies a different quarter of all backup data each day (all of it every 4 days).
@@ -237,3 +238,50 @@ To change what's monitored, edit `watchtower/gatus/config.yaml` and redeploy.
 ### Who watches the watchtower?
 
 Nothing on the watchtower can tell you that the watchtower itself has stopped. Oracle may also reclaim an Always Free VM that stays mostly idle for a week, and this one mostly waits. So create a free check at [healthchecks.io](https://healthchecks.io) with a period of 1 day, and put its ping URL in `WATCHTOWER_PING_URL` in `services/config.env`. backup-check pings it after every check, so healthchecks.io emails you if the pings stop.
+
+## NetBird
+
+The VPN's control server runs on the second Always Free AMD micro VM (`netbird.tf`). [NetBird](https://netbird.io) builds a WireGuard mesh between your devices. This server signs them in, tells them how to reach each other, and relays their traffic only when no direct connection is possible. The stack (`services/netbird/`) has three containers:
+
+- **server:** NetBird's combined server: management, signal, relay and STUN in one process. Its config is written in `compose.yaml`, with the secrets filled in from 1Password.
+- **dashboard:** the web UI, where you manage devices, users and access policies.
+- **caddy:** a Caddy of its own that gets the HTTPS certificate for `netbird.<domain>`. It sends gRPC (HTTP/2 without TLS, `h2c`), the relay and the API to the server, and everything else to the dashboard.
+
+Sign-in uses NetBird's built-in identity provider, and Pocket ID can be added as an extra way to sign in. Keep the built-in admin account even then: it still works when the main VM, and with it Pocket ID, is down.
+
+### One-time setup
+
+1. **The VM:** `terraform apply`. Expect 4 to add: the VM, its network security group, the group's STUN rule (UDP 3478) and its DNS record. `netbird_dns_name` must be `netbird.<domain>`.
+2. **SSH:** add a `Host netbird` entry to `~/.ssh/config`, a copy of the watchtower's with the new name.
+3. **Prepare the VM.** It keeps ports 80/443 open for Caddy, and also opens STUN's port:
+   ```sh
+   ssh netbird 'sudo OPEN_UDP_PORTS=3478 bash -s' < host/setup-vm.sh
+   ```
+4. **Secrets, in 1Password.** Never change `store_encryption_key` afterwards: it encrypts parts of the database, so a backup can't be read without the key it was made with.
+   ```sh
+   op item create --vault=Private --category="Secure Note" --title="NetBird" \
+     "auth_secret[password]=$(openssl rand -hex 32)" \
+     "session_cookie_key[password]=$(openssl rand -base64 32)" \
+     "store_encryption_key[password]=$(openssl rand -base64 32)"
+   ```
+5. **Deploy, then claim the server right away.** Until the first account exists, whoever opens the dashboard first can create it.
+   ```sh
+   services/deploy.sh netbird
+   ```
+   Open `https://netbird.<domain>`, create your admin account and save its password in 1Password.
+6. **Your first device:** install the [NetBird client](https://docs.netbird.io/get-started/install), then connect it to your server, not NetBird's cloud:
+   ```sh
+   netbird up --management-url https://netbird.<domain>
+   netbird status   # Management: Connected, Signal: Connected
+   ```
+7. **Optional, sign in with Pocket ID:** in Pocket ID, add an OIDC client called NetBird (not a public client, PKCE off). In the NetBird dashboard, go to **Settings → Identity Providers**, add Pocket ID with that client's ID and secret, and issuer `https://auth.<domain>` (no trailing slash). Then add the redirect URL that NetBird shows to the client's callback URLs in Pocket ID.
+
+### Day to day
+
+```sh
+ssh netbird 'cd ~/services/netbird && docker compose logs --tail 50 server'
+ssh netbird 'docker stats --no-stream'   # memory use on the 1 GB VM
+netbird status -d                        # on a device: is each peer P2P (direct) or Relayed?
+```
+
+To update NetBird, change the image tags in `netbird/compose.yaml` and redeploy. NetBird's data isn't in the nightly backups yet, so if the VM is lost, every device has to be added again.

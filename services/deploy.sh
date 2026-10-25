@@ -7,7 +7,8 @@
 #   1. Syncs services/<service>/ to ~/services/<service>/ on the VM.
 #   2. Writes ~/services/<service>/.env: the shared settings from config.env, plus
 #      .env.tpl with its op:// references filled in by 1Password (`op inject`).
-#      The secrets go straight over SSH and never touch the local disk.
+#      The secrets go straight over SSH and never touch the local disk. It also
+#      gets STACK_HASH, a fingerprint of the stack's files and settings.
 #   3. Runs `docker compose up -d` there (and reloads Caddy's config for edge).
 set -euo pipefail
 
@@ -31,6 +32,16 @@ done < <(sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' config.env)
 if [[ -f "$service/.env.tpl" ]]; then
   env_content+="$(op inject -i "$service/.env.tpl")"
 fi
+
+# A fingerprint of everything this deploy sends: the stack's files and its settings.
+# `up -d` only recreates a container when its own definition changes, not when a
+# config file it reads does, so stacks that read config files (like netbird) put
+# ${STACK_HASH} in a label: any change to a file or secret then recreates them.
+stack_hash=$({
+  (cd "$service" && find . -type f ! -name .env ! -name .env.tpl -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256)
+  printf '%s' "$env_content"
+} | shasum -a 256 | cut -c1-16)
+env_content="STACK_HASH=$stack_hash"$'\n'"$env_content"
 
 # Reuse one SSH connection for the whole deploy, so a hardware key is touched once.
 ssh_opts=(-o ControlMaster=auto -o "ControlPath=$HOME/.ssh/cm-%C" -o ControlPersist=60)
