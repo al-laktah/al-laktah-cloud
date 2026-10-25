@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Deploys one service stack to the VM:  services/deploy.sh <service>
+# Deploys one service stack to its VM:  services/deploy.sh <service>
+#
+# Stacks go to DEPLOY_HOST, unless config.env names another host for them as
+# DEPLOY_HOST_<SERVICE> (e.g. DEPLOY_HOST_WATCHTOWER for services/watchtower).
 #
 #   1. Syncs services/<service>/ to ~/services/<service>/ on the VM.
 #   2. Writes ~/services/<service>/.env: the shared settings from config.env, plus
@@ -13,7 +16,11 @@ service="${1:?usage: services/deploy.sh <service>}"
 [[ -f "$service/compose.yaml" ]] || { echo "no stack at services/$service/compose.yaml" >&2; exit 1; }
 
 # shellcheck source-path=SCRIPTDIR source=config.env.example
-source ./config.env # DEPLOY_HOST, DEPLOY_SSH_KEY, plus the shared settings
+source ./config.env # DEPLOY_HOST(_<SERVICE>), DEPLOY_SSH_KEY, plus the shared settings
+
+host_var="DEPLOY_HOST_$(printf '%s' "$service" | tr 'a-z-' 'A-Z_')"
+host="${!host_var:-$DEPLOY_HOST}"
+echo "deploying $service to $host"
 
 # Render secrets first, so a failed `op inject` can't leave a half-written .env behind.
 # Every setting in config.env except the DEPLOY_* ones goes to every stack.
@@ -34,7 +41,7 @@ if [[ -n ${DEPLOY_SSH_KEY:-} ]]; then
 fi
 # The commands are built here on purpose, e.g. with $dir filled in before they're sent.
 # shellcheck disable=SC2029
-remote() { ssh "${ssh_opts[@]}" "$DEPLOY_HOST" "$@"; }
+remote() { ssh "${ssh_opts[@]}" "$host" "$@"; }
 
 dir="services/$service" # relative to the remote home directory
 
@@ -50,7 +57,7 @@ remote "mkdir -p $dir && { docker network inspect web >/dev/null 2>&1 || docker 
 
 # --delete keeps the VM in step with the repo; .env is excluded so it survives.
 # Service data lives in named Docker volumes, never inside ~/services/<service>.
-rsync -a --delete --exclude .env --exclude .env.tpl -e "ssh ${ssh_opts[*]}" "$service/" "$DEPLOY_HOST:$dir/"
+rsync -a --delete --exclude .env --exclude .env.tpl -e "ssh ${ssh_opts[*]}" "$service/" "$host:$dir/"
 printf '%s\n' "$env_content" | remote "umask 077 && cat > $dir/.env"
 
 # Stacks with a Dockerfile (like backup) are built on the VM instead of pulled.

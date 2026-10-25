@@ -131,14 +131,25 @@ variable "instance_memory_gbs" {
 }
 
 variable "boot_volume_size_gbs" {
-  description = "Boot volume size in GB. Always Free gives 200 GB of block storage in total (boot + block volumes)."
+  description = "Boot volume size in GB for the A1 VM. Always Free gives 200 GB of block storage in total (boot + block volumes), and the watchtower's boot volume takes 50 GB of it."
   type        = number
   default     = 50
 
   validation {
-    condition     = var.boot_volume_size_gbs >= 50 && var.boot_volume_size_gbs <= 200
-    error_message = "Boot volume must be between 50 and 200 GB."
+    condition     = var.boot_volume_size_gbs >= 50 && var.boot_volume_size_gbs <= 150
+    error_message = "Boot volume must be between 50 and 150 GB (the watchtower uses another 50 of the free 200 GB)."
   }
+}
+
+variable "watchtower_name" {
+  description = "Display name, hostname and dynamic group name for the watchtower VM."
+  type        = string
+  default     = "watchtower"
+}
+
+variable "watchtower_dns_name" {
+  description = "Fully qualified hostname for the watchtower VM, e.g. \"watchtower.example.com\"."
+  type        = string
 }
 
 variable "backup_bucket_name" {

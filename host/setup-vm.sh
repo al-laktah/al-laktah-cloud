@@ -5,8 +5,12 @@
 # services/deploy.sh afterwards.
 #
 # Run it from your laptop:  ssh <host> 'sudo bash -s' < host/setup-vm.sh
+# For a VM that serves no websites (the watchtower), leave ports 80/443 closed:
+#                            ssh <host> 'sudo OPEN_WEB_PORTS=no bash -s' < host/setup-vm.sh
 # Running it again is safe, it only does what is still missing.
 set -euo pipefail
+
+OPEN_WEB_PORTS=${OPEN_WEB_PORTS:-yes}
 
 if [ "$(id -u)" -ne 0 ]; then
 	echo "Run this with sudo" >&2
@@ -27,6 +31,17 @@ apt_get() {
 		-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold "$@"
 }
 
+echo "== Adding swap on small VMs"
+# The 1 GB AMD micro can run out of memory while upgrading packages or building images
+mem_mb=$(awk '/MemTotal/ { print int($2 / 1024) }' /proc/meminfo)
+if [ "$mem_mb" -lt 2048 ] && [ -z "$(swapon --show --noheadings)" ]; then
+	fallocate -l 2G /swapfile
+	chmod 600 /swapfile
+	mkswap /swapfile
+	swapon /swapfile
+	grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
 echo "== Installing updates"
 apt_get update
 apt_get upgrade
@@ -38,22 +53,26 @@ Unattended-Upgrade::Automatic-Reboot "true";
 Unattended-Upgrade::Automatic-Reboot-Time "04:00";
 EOF
 
-echo "== Opening ports 80 and 443"
-# Oracle's Ubuntu images block everything but SSH on the VM itself, on top of the security list.
-# The rules file is edited by hand instead of saved, so Docker's own rules never end up in it.
-RULES=/etc/iptables/rules.v4
-for rule in "-p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT" \
-	"-p tcp -m state --state NEW -m tcp --dport 443 -j ACCEPT" \
-	"-p udp -m state --state NEW -m udp --dport 443 -j ACCEPT"; do
-	# shellcheck disable=SC2086
-	if ! iptables -C INPUT $rule 2>/dev/null; then
-		reject=$(iptables -L INPUT --line-numbers -n | awk '$2 == "REJECT" { print $1; exit }')
-		iptables -I INPUT "${reject:-1}" $rule
-	fi
-	if [ -f "$RULES" ] && ! grep -qF -- "-A INPUT $rule" "$RULES"; then
-		sed -i "/^-A INPUT -j REJECT/i -A INPUT $rule" "$RULES"
-	fi
-done
+if [ "$OPEN_WEB_PORTS" = yes ]; then
+	echo "== Opening ports 80 and 443"
+	# Oracle's Ubuntu images block everything but SSH on the VM itself, on top of the security list.
+	# The rules file is edited by hand instead of saved, so Docker's own rules never end up in it.
+	RULES=/etc/iptables/rules.v4
+	for rule in "-p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT" \
+		"-p tcp -m state --state NEW -m tcp --dport 443 -j ACCEPT" \
+		"-p udp -m state --state NEW -m udp --dport 443 -j ACCEPT"; do
+		# shellcheck disable=SC2086
+		if ! iptables -C INPUT $rule 2>/dev/null; then
+			reject=$(iptables -L INPUT --line-numbers -n | awk '$2 == "REJECT" { print $1; exit }')
+			iptables -I INPUT "${reject:-1}" $rule
+		fi
+		if [ -f "$RULES" ] && ! grep -qF -- "-A INPUT $rule" "$RULES"; then
+			sed -i "/^-A INPUT -j REJECT/i -A INPUT $rule" "$RULES"
+		fi
+	done
+else
+	echo "== Leaving ports 80 and 443 closed (OPEN_WEB_PORTS=$OPEN_WEB_PORTS)"
+fi
 
 echo "== Installing Docker"
 if ! command -v docker >/dev/null; then

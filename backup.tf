@@ -26,3 +26,25 @@ resource "oci_identity_policy" "vm_backups" {
     "Allow dynamic-group ${oci_identity_dynamic_group.vm.name} to manage objects in tenancy where target.bucket.name = '${var.backup_bucket_name}'",
   ]
 }
+
+# The watchtower (watchtower.tf) verifies the backups independently. It may only
+# read them ("read objects" = list and download), so it can't damage what it checks.
+resource "oci_identity_dynamic_group" "watchtower" {
+  compartment_id = var.tenancy_ocid
+  name           = var.watchtower_name
+  description    = "The al-laktah-cloud watchtower VM, which checks the backups read-only"
+  matching_rule  = "ALL {instance.id = '${oci_core_instance.watchtower.id}'}"
+  freeform_tags  = local.common_tags
+}
+
+resource "oci_identity_policy" "watchtower_backups" {
+  compartment_id = var.tenancy_ocid
+  name           = "${var.watchtower_name}-backups"
+  description    = "Lets the al-laktah-cloud watchtower read the backups bucket, and nothing else"
+  freeform_tags  = local.common_tags
+
+  statements = [
+    "Allow dynamic-group ${oci_identity_dynamic_group.watchtower.name} to read buckets in tenancy where target.bucket.name = '${var.backup_bucket_name}'",
+    "Allow dynamic-group ${oci_identity_dynamic_group.watchtower.name} to read objects in tenancy where target.bucket.name = '${var.backup_bucket_name}'",
+  ]
+}

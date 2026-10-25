@@ -8,6 +8,7 @@ Docker Compose stacks that run on the VM, all behind one Caddy edge proxy.
 | `pocket-id/` | `auth.<domain>` | [Pocket ID](https://pocket-id.org): a passkey-only OpenID Connect provider that signs you in to the other services |
 | `outline/` | `wiki.<domain>` | [Outline](https://www.getoutline.com) wiki, with its Postgres and Redis |
 | `backup/` | | Nightly encrypted [restic](https://restic.net) backups of every service's data to OCI Object Storage (see [Backups](#backups)) |
+| `watchtower/` | | Runs on the separate watchtower VM. [Gatus](https://github.com/TwiN/gatus) monitors the sites and certificates, and a daily job verifies the backups read-only (see [Watchtower](#watchtower)) |
 
 [shorti](https://github.com/al-laktah/shorti) also runs on the VM, but it is built and deployed from its own repo (see below). This repo only provides its DNS record and its site file in `edge/config/sites/`.
 
@@ -176,3 +177,63 @@ docker compose run --rm -v ~/restore:/restore backup restic restore latest --tar
 **After a VM rebuild,** deploy the stacks first, so their volumes exist. Then restore as above. Rebuilding gives the VM a new OCID; `terraform apply` updates the dynamic group to match it.
 
 Delete `~/restore` when you're done; it holds unencrypted copies of everything.
+
+## Watchtower
+
+A separate, Always Free AMD micro VM (`watchtower.tf`) watches the main VM from outside, because a VM that hangs can't report on itself. It runs two containers (`services/watchtower/`):
+
+- **Gatus** checks `wiki`, `auth` and `shorti` over HTTPS and the main VM's SSH port, every minute. It sends an alert to your phone through [ntfy](https://ntfy.sh) after 3 failed checks in a row, or when a certificate has less than 10 days left. It sends another when things recover.
+- **backup-check** verifies the backups every day at 06:00 UTC:
+  1. The latest backup is less than 26 hours old.
+  2. The repository passes `restic check`, which also downloads and verifies a different quarter of all backup data each day (all of it every 4 days).
+  3. The databases restore: Pocket ID's and shorti's SQLite files pass an integrity check, and Outline's dump loads into a throwaway Postgres.
+
+  It reports each result to Gatus. Gatus alerts on a failure, and also if no result arrives for 26 hours.
+
+The watchtower can only **read** the backups bucket (`backup.tf`). Every restic command runs with `--no-lock`, so it never writes, and it couldn't damage the backups even if it went wrong.
+
+### One-time setup
+
+1. **The VM:** `terraform apply`. Expect 4 to add: the VM, its DNS record, its dynamic group and its read-only policy. Nothing should change on the main VM.
+2. **SSH:** add a host entry to `~/.ssh/config`, a copy of the main VM's with the new name:
+   ```
+   Host watchtower
+     HostName watchtower.<domain>
+     User ubuntu
+     IdentityFile ~/.ssh/<key>.pub
+     IdentitiesOnly yes
+   ```
+3. **Prepare the VM.** It adds swap, and leaves ports 80/443 closed, because the watchtower serves nothing publicly:
+   ```sh
+   ssh watchtower 'sudo OPEN_WEB_PORTS=no bash -s' < host/setup-vm.sh
+   ```
+4. **Secrets, in 1Password.** The ntfy topic acts as a password: anyone who knows it can read your alerts.
+   ```sh
+   op item create --vault=Private --category="Secure Note" --title="Watchtower" \
+     "ntfy_topic[password]=alerts-$(openssl rand -hex 16)" \
+     "push_token[password]=$(openssl rand -hex 32)"
+   ```
+5. **Alerts on your phone:** install the ntfy app and subscribe to the topic (`op read "op://Private/Watchtower/ntfy_topic"`). Send a test message to make sure it arrives:
+   ```sh
+   curl -d "Hello from the watchtower" "ntfy.sh/$(op read 'op://Private/Watchtower/ntfy_topic')"
+   ```
+6. **Deploy, then run the first backup check right away:**
+   ```sh
+   services/deploy.sh watchtower        # builds the check image on the VM; takes a few minutes on the micro
+   ssh watchtower 'cd ~/services/watchtower && docker compose exec backup-check check.sh'
+   ```
+   It should end with `== backup check passed: …`. Right after `terraform apply`, the new policy can take a few minutes to apply everywhere. If the check can't read the snapshots, wait and try again.
+
+### Day to day
+
+```sh
+ssh -L 8080:localhost:8080 watchtower   # then open http://localhost:8080 for the Gatus dashboard
+ssh watchtower 'cd ~/services/watchtower && docker compose logs --tail 50 backup-check'
+ssh watchtower 'cd ~/services/watchtower && docker compose exec backup-check check.sh'   # check the backups now
+```
+
+To change what's monitored, edit `watchtower/gatus/config.yaml` and redeploy.
+
+### Who watches the watchtower?
+
+Nothing on the watchtower can tell you that the watchtower itself has stopped. Oracle may also reclaim an Always Free VM that stays mostly idle for a week, and this one mostly waits. So create a free check at [healthchecks.io](https://healthchecks.io) with a period of 1 day, and put its ping URL in `WATCHTOWER_PING_URL` in `services/config.env`. backup-check pings it after every check, so healthchecks.io emails you if the pings stop.

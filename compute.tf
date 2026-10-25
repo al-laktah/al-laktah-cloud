@@ -46,15 +46,9 @@ resource "oci_core_instance" "arm_vm" {
     hostname_label   = var.instance_name
   }
 
-  # SSH keys are handed to cloud-init (which runs on the VM's first boot) as user_data
-  # rather than OCI's own ssh_authorized_keys field, because the OCI API rejects
-  # security-key types such as YubiKey's "sk-ssh-ed25519@openssh.com". cloud-init
-  # installs them for the "ubuntu" user. OCI won't change user_data after launch; see README.
+  # cloud-init installs the SSH keys on first boot (see local.ssh_user_data in main.tf)
   metadata = {
-    user_data = base64encode(join("\n", [
-      "#cloud-config",
-      yamlencode({ ssh_authorized_keys = var.ssh_public_keys }),
-    ]))
+    user_data = local.ssh_user_data
   }
 
   # Delete the boot volume with the instance so `terraform destroy` leaves nothing behind.

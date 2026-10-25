@@ -1,0 +1,72 @@
+# What Gatus watches, and how it tells you. ${...} values come from the stack's
+# .env, which deploy.sh writes.
+
+storage:
+  type: sqlite
+  path: /data/data.db
+
+alerting:
+  ntfy:
+    topic: "${NTFY_TOPIC}"
+    priority: 4
+    default-alert:
+      failure-threshold: 3 # three failed checks in a row (3 minutes) before an alert
+      success-threshold: 2
+      send-on-resolved: true
+
+endpoints:
+  - name: wiki
+    group: sites
+    url: "https://wiki.${DOMAIN}"
+    interval: 1m
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 5000"
+      - "[CERTIFICATE_EXPIRATION] > 240h" # 10 days: Caddy renews long before this
+    alerts:
+      - type: ntfy
+
+  - name: auth
+    group: sites
+    url: "https://auth.${DOMAIN}/healthz" # Pocket ID's health check
+    interval: 1m
+    conditions:
+      - "[STATUS] == 204"
+      - "[RESPONSE_TIME] < 5000"
+      - "[CERTIFICATE_EXPIRATION] > 240h"
+    alerts:
+      - type: ntfy
+
+  - name: shorti
+    group: sites
+    url: "https://shorti.${DOMAIN}"
+    interval: 1m
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 5000"
+      - "[CERTIFICATE_EXPIRATION] > 240h"
+    alerts:
+      - type: ntfy
+
+  - name: ssh
+    group: server
+    url: "tcp://cloud.${DOMAIN}:22" # the A1 VM's own DNS name (dns_name in terraform.tfvars)
+    interval: 1m
+    conditions:
+      - "[CONNECTED] == true"
+    alerts:
+      - type: ntfy
+
+# Pushed once a day by backup-check (key "backups_nightly-backup"). The heartbeat
+# also raises an alert if no result arrives at all, e.g. because the check stopped.
+external-endpoints:
+  - name: nightly backup
+    group: backups
+    token: "${GATUS_PUSH_TOKEN}"
+    heartbeat:
+      interval: 26h
+    alerts:
+      - type: ntfy
+        failure-threshold: 1
+        success-threshold: 1
+        send-on-resolved: true

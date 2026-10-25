@@ -3,7 +3,7 @@
 [![Terraform](https://github.com/al-laktah/al-laktah-cloud/actions/workflows/terraform.yml/badge.svg)](https://github.com/al-laktah/al-laktah-cloud/actions/workflows/terraform.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-My personal cloud on Oracle Cloud's **Always Free** tier, at no cost. Terraform builds the infrastructure: an Arm VM, its network, Cloudflare DNS records and remote state. The services on the VM, an Outline wiki and passkey sign-in, run as Docker Compose stacks behind Caddy and are backed up every night.
+My personal cloud on Oracle Cloud's **Always Free** tier, at no cost. Terraform builds the infrastructure: an Arm VM, its network, Cloudflare DNS records and remote state. The services on the VM, an Outline wiki and passkey sign-in, run as Docker Compose stacks behind Caddy and are backed up every night. A second, tiny VM watches it all from outside.
 
 ## Architecture
 
@@ -11,6 +11,7 @@ My personal cloud on Oracle Cloud's **Always Free** tier, at no cost. Terraform 
 flowchart LR
     tf["Terraform CLI<br/>(laptop or CI)"]
     client["Browser / SSH client"]
+    phone["Phone<br/>ntfy alerts"]
 
     subgraph cloudflare["Cloudflare"]
         dns["A records<br/>cloud.example.com + one per service<br/>DNS only"]
@@ -29,6 +30,10 @@ flowchart LR
                     shorti["shorti"]
                     backup["backup<br/>restic, nightly"]
                 end
+                subgraph wt["Watchtower · AMD micro · 1/8 OCPU · 1 GB RAM"]
+                    gatus["Gatus<br/>uptime + certificates"]
+                    check["backup-check<br/>daily, read-only"]
+                end
             end
         end
     end
@@ -43,7 +48,11 @@ flowchart LR
     igw -->|SSH| vm
     caddy --> outline & pocketid & shorti
     outline -.->|OIDC sign-in| pocketid
-    backup -->|instance principal| backups
+    backup -->|instance principal, read-write| backups
+    check -->|instance principal, read-only| backups
+    gatus -.->|checks every minute| igw
+    check -->|daily result| gatus
+    gatus -->|alerts| phone
 ```
 
 - **Compute:** one Ampere A1 (Arm) VM with **2 OCPUs, 12 GB RAM and a 50 GB boot volume**, running Ubuntu 24.04.
@@ -52,8 +61,9 @@ flowchart LR
 - **State:** a private, versioned Object Storage bucket with automatic locking, created by a separate `bootstrap/` config.
 - **Services:** Docker Compose stacks in [`services/`](services/README.md). They sit behind one Caddy reverse proxy that handles HTTPS for every site, and Pocket ID gives them passkey sign-in.
 - **Backups:** every night, restic encrypts the services' databases and files and uploads them to a separate Object Storage bucket, keeping 7 daily, 4 weekly and 6 monthly snapshots. The VM signs in as itself, so it holds no cloud credentials.
+- **Watchtower:** an Always Free AMD micro VM. Gatus checks the sites, SSH and certificates every minute and alerts your phone through ntfy. A daily job independently verifies the backups, read-only: it checks they're recent, re-reads the data and restores the databases to prove they load.
 
-All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs, 12 GB), 50 of the 200 GB of block storage, and a few KB of the 20 GB of Object Storage.
+All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs, 12 GB), one of the two AMD micro VMs, 100 of the 200 GB of block storage (two 50 GB boot volumes), and a small part of the 20 GB of Object Storage.
 
 ## What this project demonstrates
 
@@ -63,6 +73,7 @@ All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs
 - **Working around real platform limits.** OCI's API rejects FIDO2 (`sk-`) SSH keys, so keys go in via cloud-init `user_data`. `ignore_changes` stops new image releases from forcing a rebuild.
 - **No credentials on the server.** The VM writes its backups as an OCI *instance principal*: a dynamic group plus a policy that limits it to one bucket. Nothing on the VM could leak access to anything else.
 - **Backups you can restore from.** Consistent database copies (`pg_dump`, and SQLite's online backup), encrypted and deduplicated by restic, with a retention schedule, nightly integrity checks and a documented restore procedure.
+- **Verification from outside.** A separate VM, with read-only access, proves daily that the backups are fresh, intact and restorable, and monitors the sites. Its own silence is caught too: by a heartbeat in Gatus, and by an external dead-man's switch.
 - **The right tool for each layer.** Terraform owns the VM, network and DNS. Docker Compose owns the apps. 1Password owns the secrets, which are injected at deploy time with `op inject` and written straight to the VM.
 - **No secrets in git.** Credentials come from `~/.oci` and a password manager at runtime. Personal values live in git-ignored files, with committed `.example` templates.
 - **CI.** Every push and pull request runs `terraform fmt` and `terraform validate`, and checks every service stack with `docker compose config`. No cloud credentials are needed.
@@ -79,12 +90,13 @@ All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs
 | `network.tf` | VCN, internet gateway, route table, security list, subnet |
 | `compute.tf` | Image lookup and the VM itself |
 | `dns.tf` | Cloudflare A records pointing at the VM, its own and one per website (DNS only, not proxied) |
-| `backup.tf` | Dynamic group and policy that let the VM write to the backups bucket, and nothing else |
+| `watchtower.tf` | The watchtower VM (Always Free AMD micro) |
+| `backup.tf` | Dynamic groups and policies: the VM may write to the backups bucket, the watchtower may only read it |
 | `outputs.tf` | Values printed after `apply` (IP, hostname, SSH command) |
 | `terraform.tfvars.example`, `backend.hcl.example` | Templates for your personal values |
 | `bootstrap/` | A separate config for the long-lived buckets, Terraform state and backups, that must outlive the VM |
 | `host/setup-vm.sh` | Prepares the VM itself for the services: updates, its own firewall, Docker, log rotation |
-| `services/` | Docker Compose stacks for the VM (Caddy, Pocket ID, Outline, backups) and `deploy.sh`. See [services/README.md](services/README.md) |
+| `services/` | Docker Compose stacks (Caddy, Pocket ID, Outline, backups, and the watchtower's Gatus and backup checks) and `deploy.sh`. See [services/README.md](services/README.md) |
 | `.github/workflows/terraform.yml` | CI: `fmt` and `validate` for both Terraform configs, and `docker compose config` for every stack |
 
 Personal values live only in git-ignored files: `terraform.tfvars`, `bootstrap/terraform.tfvars` and `backend.hcl`. Secrets never touch the repo: the OCI API key stays in `~/.oci`, and the Cloudflare token stays in your password manager.

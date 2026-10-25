@@ -1,0 +1,47 @@
+# The watchtower watches the main VM from outside it. Gatus checks the sites and
+# alerts through ntfy; backup-check verifies the backups every day, read-only, and
+# reports to Gatus. Deployed to the watchtower VM (DEPLOY_HOST_WATCHTOWER).
+name: watchtower
+
+services:
+  gatus:
+    image: twinproduction/gatus:v5.37.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080" # dashboard only through an SSH tunnel, see services/README.md
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in services/config.env}
+      NTFY_TOPIC: ${NTFY_TOPIC:?missing from .env.tpl}
+      GATUS_PUSH_TOKEN: ${GATUS_PUSH_TOKEN:?missing from .env.tpl}
+    volumes:
+      - ./gatus:/config:ro
+      - gatus-data:/data # check history (SQLite)
+
+  backup-check:
+    build: ./check
+    image: services/backup-check:local
+    restart: unless-stopped
+    init: true # forwards `docker stop` to the sleeping scheduler
+    environment:
+      CHECK_TIME: ${CHECK_TIME:-06:00}
+      WATCHTOWER_PING_URL: ${WATCHTOWER_PING_URL:-}
+      GATUS_URL: http://gatus:8080
+      GATUS_PUSH_TOKEN: ${GATUS_PUSH_TOKEN}
+      RESTIC_REPOSITORY: rclone:oos:${BACKUP_BUCKET:?set in services/config.env}/restic
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD:?missing from .env.tpl}
+      RESTIC_CACHE_DIR: /cache
+      # rclone remote "oos": OCI Object Storage, signed in as the watchtower VM,
+      # whose policy only allows reading (backup.tf)
+      RCLONE_CONFIG_OOS_TYPE: oracleobjectstorage
+      RCLONE_CONFIG_OOS_PROVIDER: instance_principal_auth
+      RCLONE_CONFIG_OOS_NAMESPACE: ${OCI_NAMESPACE:?set in services/config.env}
+      RCLONE_CONFIG_OOS_COMPARTMENT: ${OCI_COMPARTMENT_OCID:?set in services/config.env}
+      RCLONE_CONFIG_OOS_REGION: ${OCI_REGION:?set in services/config.env}
+    volumes:
+      - cache:/cache
+    depends_on:
+      - gatus
+
+volumes:
+  gatus-data:
+  cache:

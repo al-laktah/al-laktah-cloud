@@ -18,6 +18,16 @@ output "availability_domain" {
   value       = oci_core_instance.arm_vm.availability_domain
 }
 
+output "watchtower_public_ip" {
+  description = "Public IP of the watchtower VM."
+  value       = oci_core_instance.watchtower.public_ip
+}
+
+output "watchtower_hostname" {
+  description = "DNS name pointing at the watchtower VM."
+  value       = cloudflare_dns_record.watchtower.name
+}
+
 output "backup_config" {
   description = "Settings for services/config.env, used by the backup stack."
   value       = <<-EOT

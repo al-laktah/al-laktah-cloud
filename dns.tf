@@ -12,6 +12,17 @@ resource "cloudflare_dns_record" "vm" {
   proxied = false
 }
 
+# The watchtower's own name, for SSH and deploys (watchtower.tf). DNS only as well.
+resource "cloudflare_dns_record" "watchtower" {
+  zone_id = var.cloudflare_zone_id
+  name    = var.watchtower_dns_name
+  type    = "A"
+  content = oci_core_instance.watchtower.public_ip
+  ttl     = 1
+  comment = "Managed by Terraform (al-laktah-cloud)"
+  proxied = false
+}
+
 # One A record per website served from the VM, following its public IP the same way.
 
 resource "cloudflare_dns_record" "services" {
