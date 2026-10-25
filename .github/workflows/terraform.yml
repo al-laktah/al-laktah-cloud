@@ -60,3 +60,31 @@ jobs:
             (cd "$dir" && docker compose config --quiet)
             echo "ok: $dir"
           done
+
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    env:
+      SHELLCHECK_VERSION: "0.11.0"
+      # GitHub's published digest for shellcheck-v0.11.0.linux.x86_64.tar.xz
+      SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+    steps:
+      - uses: actions/checkout@v7
+
+      # A pinned, checksummed release instead of whatever shellcheck the runner image
+      # ships: an image update could bring new warnings and fail a build that
+      # changed nothing.
+      - name: Install ShellCheck
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -fsSLo shellcheck.tar.xz "https://github.com/koalaman/shellcheck/releases/download/v$SHELLCHECK_VERSION/shellcheck-v$SHELLCHECK_VERSION.linux.x86_64.tar.xz"
+          echo "$SHELLCHECK_SHA256  shellcheck.tar.xz" | sha256sum --check
+          tar -xJf shellcheck.tar.xz
+          echo "$RUNNER_TEMP/shellcheck-v$SHELLCHECK_VERSION" >> "$GITHUB_PATH"
+
+      # Every tracked *.sh file, so a new script is checked without editing this.
+      # -x follows `# shellcheck source=` directives (deploy.sh's config.env.example).
+      - name: Check shell scripts
+        run: |
+          shellcheck --version
+          git ls-files -z '*.sh' | xargs -0 shellcheck -x

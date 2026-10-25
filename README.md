@@ -76,7 +76,7 @@ All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs
 - **Verification from outside.** A separate VM, with read-only access, proves daily that the backups are fresh, intact and restorable, and monitors the sites. Its own silence is caught too: by a heartbeat in Gatus, and by an external dead-man's switch.
 - **The right tool for each layer.** Terraform owns the VM, network and DNS. Docker Compose owns the apps. 1Password owns the secrets, which are injected at deploy time with `op inject` and written straight to the VM.
 - **No secrets in git.** Credentials come from `~/.oci` and a password manager at runtime. Personal values live in git-ignored files, with committed `.example` templates.
-- **CI.** Every push and pull request runs `terraform fmt` and `terraform validate`, and checks every service stack with `docker compose config`. No cloud credentials are needed.
+- **CI.** Every push and pull request runs `terraform fmt` and `terraform validate`, checks every service stack with `docker compose config`, and lints every shell script with ShellCheck. No cloud credentials are needed.
 
 ## Files
 
@@ -98,7 +98,7 @@ All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs
 | `bootstrap/` | A separate config for the long-lived buckets, Terraform state and backups, that must outlive the VM |
 | `host/setup-vm.sh` | Prepares the VM itself for the services: updates, its own firewall, Docker, log rotation |
 | `services/` | Docker Compose stacks (Caddy, Pocket ID, Outline, backups, and the watchtower's Gatus and backup checks) and `deploy.sh`. See [services/README.md](services/README.md) |
-| `.github/workflows/terraform.yml` | CI: `fmt` and `validate` for both Terraform configs, and `docker compose config` for every stack |
+| `.github/workflows/terraform.yml` | CI: `fmt` and `validate` for both Terraform configs, `docker compose config` for every stack, and ShellCheck for every script |
 
 Personal values live only in git-ignored files: `terraform.tfvars`, `bootstrap/terraform.tfvars` and `backend.hcl`. Secrets never touch the repo: the OCI API key stays in `~/.oci`, and the Cloudflare token stays in your password manager.
 
@@ -178,7 +178,7 @@ The bucket is private and versioned, so every past state is kept and can be rest
 Load the Cloudflare token into your shell first (once per terminal session):
 
 ```sh
-export CLOUDFLARE_API_TOKEN=$(op read "op://Personal/Cloudflare Terraform/credential")
+export CLOUDFLARE_API_TOKEN=$(op read "op://Private/Cloudflare zone edit al-laktah/credential")
 ```
 
 `op://` references only allow letters, digits, `-`, `_`, `.` and spaces in vault, item and field names. If a name has anything else (e.g. parentheses), rename the item or use its ID instead (`op item list` shows IDs).
