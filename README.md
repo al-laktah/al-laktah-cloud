@@ -161,6 +161,14 @@ terraform output                             # print outputs again later
 terraform destroy                            # delete everything this config created (the state bucket is untouched)
 ```
 
+`init` only records provider checksums for the machine it runs on. After changing a provider version (or running `init -upgrade`), record them for every platform as well, or CI on Linux will reject the lock file:
+
+```sh
+for d in . bootstrap; do
+  terraform -chdir=$d providers lock -platform=darwin_arm64 -platform=darwin_amd64 -platform=linux_amd64 -platform=linux_arm64
+done
+```
+
 ### Moving existing local state into the bucket
 
 If you already applied with local state (a `terraform.tfstate` in this folder), copy it into the bucket once:
