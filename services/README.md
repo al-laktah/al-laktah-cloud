@@ -275,7 +275,13 @@ Sign-in uses NetBird's built-in identity provider, and Pocket ID can be added as
    netbird up --management-url https://netbird.<domain>
    netbird status   # Management: Connected, Signal: Connected
    ```
-7. **Optional, sign in with Pocket ID:** in Pocket ID, add an OIDC client called NetBird (not a public client, PKCE off). In the NetBird dashboard, go to **Settings → Identity Providers**, add Pocket ID with that client's ID and secret, and issuer `https://auth.<domain>` (no trailing slash). Then add the redirect URL that NetBird shows to the client's callback URLs in Pocket ID.
+7. **Optional, sign in with Pocket ID** ([NetBird's guide](https://docs.netbird.io/selfhosted/identity-providers/pocketid)):
+   1. In Pocket ID, add an OIDC client called NetBird, with **Public Client** and **PKCE** off. Note its client ID and secret.
+   2. Still in Pocket ID, create a user group called NetBird, add yourself to it, and allow that group on the client. Only members can sign in to NetBird through it.
+   3. In the NetBird dashboard, go to **Settings → Identity Providers** and add Pocket ID with that client ID and secret, and issuer `https://auth.<domain>` (no trailing slash). Then copy the **Redirect URL** that NetBird shows into the client's **Callback URLs** in Pocket ID. Optionally, add `https://netbird.<domain>/oauth2/logout/callback` under **Logout Callback URLs**.
+   4. Sign in with Pocket ID in a private window. The new user waits for approval: approve it under **Team → Users** while signed in as the built-in admin, and make it an Admin. Keep the built-in admin as the owner and backup login.
+
+   A device can only sign in again as the user who added it. To sign in to existing devices with Pocket ID, delete them under **Peers**, then add them again while signed in with Pocket ID.
 
 ### Day to day
 
