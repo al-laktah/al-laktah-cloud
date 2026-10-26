@@ -1,0 +1,37 @@
+# Homepage (gethomepage.dev): the start page at cloud.<domain>, listing the services.
+# Its configuration is the YAML in ./config, versioned here like everything else.
+# Sign-in goes through Pocket ID, and the site is VPN-only, like the wiki.
+name: homepage
+
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:v2.7.0
+    restart: unless-stopped
+    environment:
+      HOMEPAGE_ALLOWED_HOSTS: cloud.${DOMAIN:?set DOMAIN in services/config.env}
+      HOMEPAGE_EXTERNAL_URL: https://cloud.${DOMAIN}
+      HOMEPAGE_VAR_DOMAIN: ${DOMAIN} # {{HOMEPAGE_VAR_DOMAIN}} in the config files
+      # Sign-in through Pocket ID. Who may sign in is decided there (the client's
+      # allowed groups); Homepage lets in anyone Pocket ID accepts.
+      HOMEPAGE_AUTH_ENABLED: "true"
+      HOMEPAGE_AUTH_SECRET: ${HOMEPAGE_AUTH_SECRET:?missing from .env.tpl}
+      HOMEPAGE_OIDC_ISSUER: https://auth.${DOMAIN}
+      HOMEPAGE_OIDC_CLIENT_ID: ${HOMEPAGE_OIDC_CLIENT_ID:?missing from .env.tpl}
+      HOMEPAGE_OIDC_CLIENT_SECRET: ${HOMEPAGE_OIDC_CLIENT_SECRET:?missing from .env.tpl}
+      HOMEPAGE_OIDC_NAME: Pocket ID
+      HOMEPAGE_OIDC_AUTO_LOGIN: "true" # straight to Pocket ID; /auth/signin?autologin=0 shows the page
+      # Run as the VM's ubuntu user, so nothing in ./config ends up owned by root,
+      # where deploy.sh's sync couldn't replace it. Logs go to `docker compose logs`.
+      PUID: 1000
+      PGID: 1000
+      LOG_TARGETS: stdout
+    labels:
+      stack-hash: ${STACK_HASH:-} # restart when the config changes (see deploy.sh)
+    volumes:
+      - ./config:/app/config
+    networks:
+      - web # Caddy reaches it here, and it reaches the services' containers to check them
+
+networks:
+  web:
+    external: true

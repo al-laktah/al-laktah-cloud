@@ -1,0 +1,28 @@
+---
+# https://gethomepage.dev/configs/services/
+# href is the link you click; siteMonitor is checked from the server, straight at
+# each container over the "web" network (the public names would loop through the
+# VM's public IP, which the VPN-only sites refuse).
+- Apps:
+    - Wiki:
+        icon: mdi-book-open-page-variant
+        href: https://wiki.{{HOMEPAGE_VAR_DOMAIN}}
+        description: Outline
+        siteMonitor: http://outline:3000/_health
+    - Links:
+        icon: mdi-link-variant
+        href: https://shorti.{{HOMEPAGE_VAR_DOMAIN}}
+        description: shorti, a link shortener
+        siteMonitor: http://shorti:80
+
+- Access:
+    - Sign-in:
+        icon: mdi-shield-key
+        href: https://auth.{{HOMEPAGE_VAR_DOMAIN}}
+        description: Pocket ID, passkeys for everything here
+        siteMonitor: http://pocket-id:1411/healthz
+    - VPN:
+        icon: mdi-vpn
+        href: https://netbird.{{HOMEPAGE_VAR_DOMAIN}}
+        description: NetBird dashboard
+        siteMonitor: https://netbird.{{HOMEPAGE_VAR_DOMAIN}}/oauth2/.well-known/openid-configuration

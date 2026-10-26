@@ -1,0 +1,4 @@
+cloud.{$DOMAIN} {
+	import vpn_only
+	reverse_proxy homepage:3000
+}

@@ -7,6 +7,7 @@ Docker Compose stacks that run on the VMs. The main VM's stacks all sit behind o
 | `edge/` | | Caddy edge proxy, and the only container on the main VM that publishes ports (80, 443, 443/udp). Gets HTTPS certificates for every site in `edge/config/sites/` automatically |
 | `pocket-id/` | `auth.<domain>` | [Pocket ID](https://pocket-id.org): a passkey-only OpenID Connect provider that signs you in to the other services |
 | `outline/` | `wiki.<domain>` | [Outline](https://www.getoutline.com) wiki, with its Postgres and Redis |
+| `homepage/` | `cloud.<domain>` | [Homepage](https://gethomepage.dev): the start page listing the services, with sign-in through Pocket ID. Its configuration is the YAML in `homepage/config/` |
 | `backup/` | | Nightly encrypted [restic](https://restic.net) backups of every service's data to OCI Object Storage (see [Backups](#backups)) |
 | `watchtower/` | | Runs on the separate watchtower VM. [Gatus](https://github.com/TwiN/gatus) monitors the sites and certificates, and a daily job verifies the backups read-only (see [Watchtower](#watchtower)) |
 | `netbird/` | `netbird.<domain>` | Runs on the separate NetBird VM. The [NetBird](https://netbird.io) VPN server and dashboard, behind a Caddy of its own (see [NetBird](#netbird)) |
@@ -73,15 +74,37 @@ Lost every passkey? On the VM, run `cd ~/services/pocket-id && docker compose ex
    - Join the external `web` network, and don't publish any `ports:`.
    - Read secrets as `${VAR:?}`, with matching `op://` references in `services/<name>/.env.tpl`.
    - Keep data in named volumes. `deploy.sh` syncs with `--delete`, so a bind mount inside `~/services/<name>` would be wiped on the next deploy.
-3. Create `services/edge/config/sites/<name>.caddy`:
+3. Create `services/edge/config/sites/<name>.caddy`. Leave out `import vpn_only` only for a site that must be public:
    ```
    <subdomain>.{$DOMAIN} {
+   	import vpn_only
    	reverse_proxy <container name on the web network>:<container port>
    }
    ```
-4. Run `services/deploy.sh <name>`, then `services/deploy.sh edge`.
+4. For a VPN-only site, add a NetBird DNS zone for its name (see [Behind NetBird](#behind-netbird)), and its name to the gatus container's `extra_hosts` in `watchtower/compose.yaml`.
+5. Add a tile to `homepage/config/services.yaml`, with a `siteMonitor` at the container's address on the `web` network.
+6. Run `services/deploy.sh <name>`, then deploy `edge`, `homepage` and `watchtower`.
 
 CI checks every folder that has a `compose.yaml` with `docker compose config`, using placeholder values for the `op://` references.
+
+## Homepage
+
+The start page at `cloud.<domain>`: one tile per service, each with a status dot, plus the main VM's CPU, memory and disk. It's VPN-only like the wiki, and asks you to sign in with Pocket ID.
+
+Everything on the page comes from the YAML in `homepage/config/`: `services.yaml` for the tiles, `widgets.yaml` for the top row, `bookmarks.yaml` for the links, `settings.yaml` for the layout. Edit and redeploy; `deploy.sh`'s fingerprint restarts Homepage when a file changes. Write `{{HOMEPAGE_VAR_DOMAIN}}` instead of your domain, so the files stay generic.
+
+**One-time setup:**
+
+1. **Pocket ID:** add an OIDC client called Homepage, with callback URL `https://cloud.<domain>/api/auth/callback/homepage-oidc`. Homepage lets in anyone Pocket ID accepts, so allow only your own user group on the client.
+2. **Secrets, in 1Password**, with the client's ID and secret from step 1:
+   ```sh
+   op item create --vault=Private --category="Secure Note" --title="Homepage" \
+     "auth_secret[password]=$(openssl rand -base64 32)" \
+     "oidc_client_id[text]=<client ID>" \
+     "oidc_client_secret[password]=<client secret>"
+   ```
+3. **VPN-only DNS:** in NetBird, add the zone `cloud.<domain>` with an A record `cloud.<domain>` pointing at the main VM's NetBird IP, distributed to `admins` (see [Behind NetBird](#behind-netbird)). `cloud.<domain>` is the VM's own public record (`dns_name`), so its certificate renews as usual.
+4. **Deploy:** `services/deploy.sh homepage`, then `services/deploy.sh edge` for the new site, and `services/deploy.sh watchtower` for its check.
 
 ## Apps with their own repo (shorti)
 
@@ -184,7 +207,7 @@ Delete `~/restore` when you're done; it holds unencrypted copies of everything.
 
 A separate, Always Free AMD micro VM (`watchtower.tf`) watches the main VM from outside, because a VM that hangs can't report on itself. It runs two containers (`services/watchtower/`):
 
-- **Gatus** checks `wiki`, `auth`, `shorti` and `netbird` over HTTPS and the main VM's SSH port, every minute. The VPN-only sites and SSH are checked across the VCN, at the main VM's private IP (`MAIN_VM_PRIVATE_IP`). It sends an alert to your phone through [ntfy](https://ntfy.sh) after 3 failed checks in a row, or when a certificate has less than 10 days left. It sends another when things recover.
+- **Gatus** checks `wiki`, `cloud`, `auth`, `shorti` and `netbird` over HTTPS and the main VM's SSH port, every minute. The VPN-only sites and SSH are checked across the VCN, at the main VM's private IP (`MAIN_VM_PRIVATE_IP`). It sends an alert to your phone through [ntfy](https://ntfy.sh) after 3 failed checks in a row, or when a certificate has less than 10 days left. It sends another when things recover.
 - **backup-check** verifies the backups of both VMs every day at 06:00 UTC, first the main VM's, then the NetBird VM's:
   1. The latest backup is less than 26 hours old.
   2. The repository passes `restic check`, which also downloads and verifies a different quarter of all backup data each day (all of it every 4 days).
@@ -299,7 +322,7 @@ Only `auth` (Pocket ID) and `netbird` itself face the internet. SSH on every VM,
    It ends by printing the VM's NetBird IP and name (`FQDN`).
 4. **SSH over NetBird:** in `~/.ssh/config`, point each host at its NetBird name, e.g. `HostName arm-vm-01.netbird.selfhosted`, and check that `ssh <host>` and `services/deploy.sh <stack>` still work.
 5. **Access policy:** under **Access Control → Policies**, add `admins` → `servers` (all protocols), then disable the `Default` policy, which lets every peer reach every other. Check SSH again.
-6. **The private sites:** under **DNS → Zones**, add one zone per private name, distributed to `admins`: zone `wiki.<domain>` with an A record `wiki.<domain>`, and zone `shorti.<domain>` with an A record `shorti.<domain>`, both pointing at the main VM's NetBird IP. One zone for the whole `<domain>` would route every name under it (`auth` too) through NetBird's DNS; one zone per name keeps NetBird's DNS out of everything else. Then set `MAIN_VM_PRIVATE_IP` in `config.env` (from `terraform output -raw services_config`) and deploy `edge` and `watchtower`. Check that the wiki loads with NetBird on, and shows *Only available over the VPN* with it off.
+6. **The private sites:** under **DNS → Zones**, add one zone per private name, distributed to `admins`: zone `wiki.<domain>` with an A record `wiki.<domain>`, and the same for `shorti.<domain>` and `cloud.<domain>`, all pointing at the main VM's NetBird IP. One zone for the whole `<domain>` would route every name under it (`auth` too) through NetBird's DNS; one zone per name keeps NetBird's DNS out of everything else. Then set `MAIN_VM_PRIVATE_IP` in `config.env` (from `terraform output -raw services_config`) and deploy `edge` and `watchtower`. Check that the wiki loads with NetBird on, and shows *Only available over the VPN* with it off.
 7. **Close SSH:** delete the `ssh_allowed_cidr` line from `terraform.tfvars`, then `terraform apply` again. SSH now answers only over NetBird, the Bastion and the VCN.
 
 ### Day to day

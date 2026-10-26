@@ -48,6 +48,17 @@ endpoints:
     alerts:
       - type: ntfy
 
+  - name: cloud
+    group: sites
+    url: "https://cloud.${DOMAIN}/api/healthcheck" # Homepage's health check, open without sign-in
+    interval: 1m
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 5000"
+      - "[CERTIFICATE_EXPIRATION] > 240h"
+    alerts:
+      - type: ntfy
+
   - name: netbird
     group: sites
     # The sign-in discovery document, answered by the NetBird server itself, so this

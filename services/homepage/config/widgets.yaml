@@ -1,0 +1,9 @@
+---
+# https://gethomepage.dev/widgets/
+- resources: # the main VM, as seen from the container
+    cpu: true
+    memory: true
+    disk: /
+- datetime:
+    format:
+      dateStyle: long

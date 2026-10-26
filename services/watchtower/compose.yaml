@@ -19,6 +19,7 @@ services:
     extra_hosts:
       - "wiki.${DOMAIN}:${MAIN_VM_PRIVATE_IP}"
       - "shorti.${DOMAIN}:${MAIN_VM_PRIVATE_IP}"
+      - "cloud.${DOMAIN}:${MAIN_VM_PRIVATE_IP}"
     volumes:
       - ./gatus:/config:ro
       - gatus-data:/data # check history (SQLite)

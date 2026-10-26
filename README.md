@@ -3,7 +3,7 @@
 [![Terraform](https://github.com/al-laktah/al-laktah-cloud/actions/workflows/terraform.yml/badge.svg)](https://github.com/al-laktah/al-laktah-cloud/actions/workflows/terraform.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-My personal cloud on Oracle Cloud's **Always Free** tier, at no cost. Terraform builds the infrastructure: an Arm VM, its network, Cloudflare DNS records and remote state. The services on the VM, an Outline wiki and passkey sign-in, run as Docker Compose stacks behind Caddy and are backed up every night. A second, tiny VM watches it all from outside, and a third runs a NetBird VPN server. Only sign-in and the VPN itself face the internet: SSH, the wiki and everything else answer only over the VPN.
+My personal cloud on Oracle Cloud's **Always Free** tier, at no cost. Terraform builds the infrastructure: an Arm VM, its network, Cloudflare DNS records and remote state. The services on the VM, an Outline wiki, passkey sign-in and a start page, run as Docker Compose stacks behind Caddy and are backed up every night. A second, tiny VM watches it all from outside, and a third runs a NetBird VPN server. Only sign-in and the VPN itself face the internet: SSH, the wiki and everything else answer only over the VPN.
 
 ## Architecture
 
@@ -31,6 +31,7 @@ flowchart LR
                     outline["Outline wiki<br/>+ Postgres, Redis"]
                     pocketid["Pocket ID<br/>passkey sign-in"]
                     shorti["shorti"]
+                    homepage["Homepage<br/>start page"]
                     backup["backup<br/>restic, nightly"]
                 end
                 subgraph wt["Watchtower · AMD micro · 1/8 OCPU · 1 GB RAM"]
@@ -51,7 +52,8 @@ flowchart LR
     client -->|1. resolve name| dns
     client -->|2. HTTPS: sign-in| igw
     igw -->|HTTPS| caddy
-    caddy --> outline & pocketid & shorti
+    caddy --> outline & pocketid & shorti & homepage
+    homepage -.->|OIDC sign-in| pocketid
     outline -.->|OIDC sign-in| pocketid
     backup -->|instance principal, read-write| backups
     check -->|instance principal, read-only| backups
@@ -62,7 +64,7 @@ flowchart LR
     check -->|daily result| gatus
     gatus -->|alerts| phone
     devices -->|sign in, find peers| igw
-    devices ==>|WireGuard: SSH, wiki, shorti| vm
+    devices ==>|WireGuard: SSH, wiki, shorti, start page| vm
     bastion -.->|SSH to a private IP, if NetBird is down| vm
     igw -->|HTTPS, STUN| netbird
 ```
@@ -114,7 +116,7 @@ All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs
 | `terraform.tfvars.example`, `backend.hcl.example`, `terraform.env.example` | Templates for your personal values |
 | `bootstrap/` | A separate config for the long-lived buckets, Terraform state and backups, that must outlive the VM |
 | `host/setup-vm.sh` | Prepares a VM itself: updates, its own firewall, Docker, log rotation, and joining NetBird |
-| `services/` | Docker Compose stacks (Caddy, Pocket ID, Outline, backups, the watchtower's Gatus and backup checks, and NetBird) and `deploy.sh`. See [services/README.md](services/README.md) |
+| `services/` | Docker Compose stacks (Caddy, Pocket ID, Outline, Homepage, backups, the watchtower's Gatus and backup checks, and NetBird) and `deploy.sh`. See [services/README.md](services/README.md) |
 | `.github/workflows/terraform.yml` | CI: `fmt` and `validate` for both Terraform configs, `docker compose config` for every stack, and ShellCheck for every script |
 
 Personal values live only in git-ignored files: `terraform.tfvars`, `bootstrap/terraform.tfvars`, `backend.hcl` and `terraform.env`. Secrets never touch the repo: the OCI API key stays in `~/.oci`, and the Cloudflare token stays in your password manager.

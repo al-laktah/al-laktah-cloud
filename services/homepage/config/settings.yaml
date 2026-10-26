@@ -1,0 +1,16 @@
+---
+# https://gethomepage.dev/configs/settings/
+title: Cloud
+description: Services on Oracle Cloud's Always Free tier
+theme: dark
+color: slate
+headerStyle: clean
+statusStyle: dot # a coloured dot per service, from its siteMonitor check
+hideVersion: true
+layout:
+  Apps:
+    style: row
+    columns: 3
+  Access:
+    style: row
+    columns: 3

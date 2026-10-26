@@ -1,0 +1,9 @@
+---
+# https://gethomepage.dev/configs/bookmarks/
+- Consoles:
+    - Oracle Cloud:
+        - icon: mdi-cloud
+          href: https://cloud.oracle.com
+    - Cloudflare:
+        - icon: si-cloudflare
+          href: https://dash.cloudflare.com
