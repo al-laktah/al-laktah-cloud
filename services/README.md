@@ -65,6 +65,8 @@ The script syncs the stack to `~/services/<service>`, writes its `.env` and runs
    ```
    Open `https://wiki.<domain>` and choose **Continue with Pocket ID**. The first person to sign in creates the workspace and becomes its admin. Only users that exist in Pocket ID can sign in, and Pocket ID has no public sign-up.
 
+   If you rename Pocket ID (its **Application Name**), set `SIGN_IN_NAME` in `config.env` to the same name and deploy `outline` again, so the button matches the page it leads to. Outline's logo, name and accent colour are under **Settings → Details**; the logo must be a PNG or JPEG.
+
 Lost every passkey? On the VM, run `cd ~/services/pocket-id && docker compose exec pocket-id /app/pocket-id one-time-access-token <username>`. It prints a one-hour sign-in link; use it to add a new passkey.
 
 ## Adding a service

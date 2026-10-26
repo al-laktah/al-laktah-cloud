@@ -24,7 +24,7 @@ services:
       OIDC_USERINFO_URI: https://auth.${DOMAIN}/api/oidc/userinfo
       OIDC_LOGOUT_URI: https://auth.${DOMAIN}/api/oidc/end-session
       OIDC_USERNAME_CLAIM: preferred_username
-      OIDC_DISPLAY_NAME: Pocket ID
+      OIDC_DISPLAY_NAME: ${SIGN_IN_NAME:-Pocket ID} # the button reads "Continue with <this>"
       OIDC_SCOPES: openid profile email groups
     volumes:
       - files:/var/lib/outline/data # uploaded attachments and images
