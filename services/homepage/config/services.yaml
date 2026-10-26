@@ -4,6 +4,11 @@
 # each container over the "web" network (the public names would loop through the
 # VM's public IP, which the VPN-only sites refuse).
 - Apps:
+    - Website:
+        icon: mdi-web
+        href: https://{{HOMEPAGE_VAR_DOMAIN}}
+        description: The public site, on GitHub Pages
+        siteMonitor: https://{{HOMEPAGE_VAR_DOMAIN}} # outside this cloud, so checked over the internet
     - Wiki:
         icon: mdi-book-open-page-variant
         href: https://wiki.{{HOMEPAGE_VAR_DOMAIN}}
