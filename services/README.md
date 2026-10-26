@@ -97,6 +97,8 @@ The **Gatus** tile shows how many checks are up and down, read from Gatus on the
 
 Everything on the page comes from the YAML in `homepage/config/`: `services.yaml` for the tiles, `widgets.yaml` for the top row, `bookmarks.yaml` for the links, `settings.yaml` for the layout. Edit and redeploy; `deploy.sh`'s fingerprint restarts Homepage when a file changes. Write `{{HOMEPAGE_VAR_DOMAIN}}` instead of your domain, so the files stay generic.
 
+The look: `custom.css` recolours Homepage with [Catppuccin](https://catppuccin.com/palette), Latte in light mode and Mocha in dark mode. The page starts in your system's mode, and the toggle at the bottom switches. The favicon, the logo in the top row and the dark-mode background are the ones uploaded to Pocket ID (**Application Configuration → Images**), so the brand is set in one place. Until you upload your own, Homepage shows Pocket ID's defaults.
+
 **One-time setup:**
 
 1. **Pocket ID:** add an OIDC client called Homepage, with callback URL `https://cloud.<domain>/api/auth/callback/homepage-oidc`. Homepage lets in anyone Pocket ID accepts, so allow only your own user group on the client.

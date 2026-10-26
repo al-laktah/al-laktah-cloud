@@ -1,0 +1,52 @@
+/* Catppuccin: Latte in light mode, Mocha in dark mode, with mauve as the accent
+   (https://catppuccin.com/palette).
+
+   Homepage draws every colour from one scale, --color-50 (lightest) to --color-900
+   (darkest), written as "R G B". settings.yaml picks the "slate" scale and this file
+   replaces it. The page is step 50 in light mode and 800 in dark mode; text uses 800
+   (light) and 200 (dark), descriptions 500 and 300. The html.… selectors are more
+   specific than Homepage's own .theme-slate, so they win whichever loads first. */
+
+html.theme-slate:not(.dark) {
+  --color-50: 239 241 245;  /* base */
+  --color-100: 230 233 239; /* mantle */
+  --color-200: 220 224 232; /* crust */
+  --color-300: 204 208 218; /* surface0 */
+  --color-400: 156 160 176; /* overlay0 */
+  --color-500: 92 95 119;   /* subtext1: subtext0 is too faint for the small descriptions */
+  --color-600: 92 95 119;   /* subtext1 */
+  --color-700: 76 79 105;   /* text */
+  --color-800: 76 79 105;   /* text */
+  --color-900: 48 52 70;    /* Frappé base, for the few darker shades */
+  --accent: 136 57 239;     /* mauve */
+}
+
+html.theme-slate.dark {
+  --color-50: 239 241 245;  /* Latte base, for the few lighter shades */
+  --color-100: 220 224 232; /* Latte crust */
+  --color-200: 205 214 244; /* text */
+  --color-300: 166 173 200; /* subtext0 */
+  --color-400: 147 153 178; /* overlay2 */
+  --color-500: 108 112 134; /* overlay0 */
+  --color-600: 69 71 90;    /* surface1 */
+  --color-700: 49 50 68;    /* surface0 */
+  --color-800: 30 30 46;    /* base */
+  --color-900: 17 17 27;    /* crust */
+  --accent: 203 166 247;    /* mauve */
+}
+
+/* Mauve for the group headings and selected text. */
+html .service-group-name,
+html .bookmark-group-name {
+  color: rgb(var(--accent));
+}
+
+::selection {
+  background-color: rgb(var(--accent) / 0.3);
+}
+
+/* The background (Pocket ID's, see settings.yaml) is a dark image, so it shows only in
+   dark mode; light mode keeps plain Latte. */
+html:not(.dark) #background {
+  display: none;
+}

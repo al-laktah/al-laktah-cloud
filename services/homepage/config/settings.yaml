@@ -2,8 +2,15 @@
 # https://gethomepage.dev/configs/settings/
 title: Cloud
 description: Services on Oracle Cloud's Always Free tier
-theme: dark
+# No fixed theme: it starts in your system's light or dark mode, and the toggle at the
+# bottom switches. custom.css turns "slate" into Catppuccin (Latte light, Mocha dark).
 color: slate
+# The icon and background uploaded to Pocket ID, so the brand is set in one place.
+favicon: https://auth.{{HOMEPAGE_VAR_DOMAIN}}/api/application-images/favicon
+background:
+  image: https://auth.{{HOMEPAGE_VAR_DOMAIN}}/api/application-images/background # dark mode only (custom.css)
+  opacity: 50 # how much of the image shows through the page colour
+cardBlur: sm
 headerStyle: clean
 statusStyle: dot # a coloured dot per service, from its siteMonitor check
 hideVersion: true

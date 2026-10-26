@@ -1,5 +1,7 @@
 ---
 # https://gethomepage.dev/widgets/
+- logo:
+    icon: https://auth.{{HOMEPAGE_VAR_DOMAIN}}/api/application-images/favicon # Pocket ID's icon, as in settings.yaml
 - resources: # the main VM, as seen from the container
     cpu: true
     memory: true
