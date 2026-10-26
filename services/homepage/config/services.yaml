@@ -26,3 +26,12 @@
         href: https://netbird.{{HOMEPAGE_VAR_DOMAIN}}
         description: NetBird dashboard
         siteMonitor: https://netbird.{{HOMEPAGE_VAR_DOMAIN}}/oauth2/.well-known/openid-configuration
+
+- Monitoring:
+    - Gatus:
+        icon: mdi-heart-pulse
+        href: http://watchtower.netbird.selfhosted:8080 # the watchtower's NetBird name
+        description: Uptime, certificates and backup checks
+        widget:
+          type: gatus
+          url: "{{HOMEPAGE_VAR_GATUS_URL}}"

@@ -91,6 +91,8 @@ CI checks every folder that has a `compose.yaml` with `docker compose config`, u
 
 The start page at `cloud.<domain>`: one tile per service, each with a status dot, plus the main VM's CPU, memory and disk. It's VPN-only like the wiki, and asks you to sign in with Pocket ID.
 
+The **Gatus** tile shows how many checks are up and down, read from Gatus on the watchtower across the VCN (`WATCHTOWER_PRIVATE_IP` in `config.env`; the watchtower's firewall lets only the main VM in). Clicking it opens the Gatus dashboard over NetBird.
+
 Everything on the page comes from the YAML in `homepage/config/`: `services.yaml` for the tiles, `widgets.yaml` for the top row, `bookmarks.yaml` for the links, `settings.yaml` for the layout. Edit and redeploy; `deploy.sh`'s fingerprint restarts Homepage when a file changes. Write `{{HOMEPAGE_VAR_DOMAIN}}` instead of your domain, so the files stay generic.
 
 **One-time setup:**
@@ -252,7 +254,7 @@ The watchtower can only **read** the backups buckets (`backup.tf`). Every restic
 ### Day to day
 
 ```sh
-ssh -L 8080:localhost:8080 watchtower   # then open http://localhost:8080 for the Gatus dashboard
+open http://watchtower.netbird.selfhosted:8080   # the Gatus dashboard, over NetBird
 ssh watchtower 'cd ~/services/watchtower && docker compose logs --tail 50 backup-check'
 ssh watchtower 'cd ~/services/watchtower && docker compose exec backup-check check.sh main'      # check the main VM's backups now
 ssh watchtower 'cd ~/services/watchtower && docker compose exec backup-check check.sh netbird'   # or the NetBird VM's
@@ -262,7 +264,17 @@ To change what's monitored, edit `watchtower/gatus/config.yaml` and redeploy.
 
 ### Who watches the watchtower?
 
-Nothing on the watchtower can tell you that the watchtower itself has stopped. Oracle may also reclaim an Always Free VM that stays mostly idle for a week, and this one mostly waits. So create a free check at [healthchecks.io](https://healthchecks.io) with a period of 1 day, and put its ping URL in `WATCHTOWER_PING_URL` in `services/config.env`. backup-check pings it after every check, so healthchecks.io emails you if the pings stop.
+Nothing on the watchtower can tell you that the watchtower itself has stopped. Oracle may also reclaim an Always Free VM that stays mostly idle for a week, and this one mostly waits. So an outside service, [healthchecks.io](https://healthchecks.io) (free), expects to hear from it every day, and emails you when it doesn't.
+
+backup-check pings it each morning: `/start` when the checks begin, then plain success, or `/fail` if a check failed. So you're told when the watchtower goes quiet, when a run hangs, and when a check fails.
+
+1. In healthchecks.io, add a check with schedule **Cron** `0 6 * * *`, time zone **UTC**, grace time **1 hour**. (If you change `CHECK_TIME`, change the schedule to match.) Email alerts are on by default.
+2. Put its ping URL in `WATCHTOWER_PING_URL` in `services/config.env`, then `services/deploy.sh watchtower`.
+3. Ping it once from inside the container, which proves the setting arrived and the VM can reach healthchecks.io:
+   ```sh
+   ssh watchtower 'cd ~/services/watchtower && docker compose exec backup-check sh -c "wget -q -T 10 -O /dev/null \"\$WATCHTOWER_PING_URL\" && echo pinged"'
+   ```
+   The check turns green in healthchecks.io. From then on the daily run keeps it green.
 
 ## NetBird
 

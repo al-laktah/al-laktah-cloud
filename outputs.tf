@@ -47,6 +47,7 @@ output "services_config" {
     BACKUP_BUCKET=${var.backup_bucket_name}
     NETBIRD_BACKUP_BUCKET=${var.netbird_backup_bucket_name}
     MAIN_VM_PRIVATE_IP=${oci_core_instance.arm_vm.private_ip}
+    WATCHTOWER_PRIVATE_IP=${oci_core_instance.watchtower.private_ip}
   EOT
 }
 

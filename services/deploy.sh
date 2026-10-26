@@ -8,7 +8,8 @@
 #   2. Writes ~/services/<service>/.env: the shared settings from config.env, plus
 #      .env.tpl with its op:// references filled in by 1Password (`op inject`).
 #      The secrets go straight over SSH and never touch the local disk. It also
-#      gets STACK_HASH, a fingerprint of the stack's files and settings.
+#      gets STACK_HASH, a fingerprint of the stack's files and settings, and
+#      HOST_UID/HOST_GID, the VM user's IDs.
 #   3. Runs `docker compose up -d` there (and reloads Caddy's config for edge).
 set -euo pipefail
 
@@ -33,16 +34,6 @@ if [[ -f "$service/.env.tpl" ]]; then
   env_content+="$(op inject -i "$service/.env.tpl")"
 fi
 
-# A fingerprint of everything this deploy sends: the stack's files and its settings.
-# `up -d` only recreates a container when its own definition changes, not when a
-# config file it reads does, so stacks that read config files (like netbird) put
-# ${STACK_HASH} in a label: any change to a file or secret then recreates them.
-stack_hash=$({
-  (cd "$service" && find . -type f ! -name .env ! -name .env.tpl -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256)
-  printf '%s' "$env_content"
-} | shasum -a 256 | cut -c1-16)
-env_content="STACK_HASH=$stack_hash"$'\n'"$env_content"
-
 # Reuse one SSH connection for the whole deploy, so a hardware key is touched once.
 ssh_opts=(-o ControlMaster=auto -o "ControlPath=$HOME/.ssh/cm-%C" -o ControlPersist=60)
 if [[ -n ${DEPLOY_SSH_KEY:-} ]]; then
@@ -64,11 +55,29 @@ if [[ $is_checkout == yes ]]; then
   exit 1
 fi
 
+# The VM user's IDs, for stacks whose container writes into the synced folder
+# (Homepage's PUID/PGID): what it creates stays owned by that user, so the next sync
+# can still replace it.
+env_content="HOST_UID=$(remote id -u)"$'\n'"HOST_GID=$(remote id -g)"$'\n'"$env_content"
+
+# A fingerprint of everything this deploy sends: the stack's files and its settings.
+# `up -d` only recreates a container when its own definition changes, not when a
+# config file it reads does, so stacks that read config files (like netbird) put
+# ${STACK_HASH} in a label: any change to a file or secret then recreates them.
+stack_hash=$({
+  (cd "$service" && find . \( -name .claude -o -name .DS_Store \) -prune -o \
+    -type f ! -name .env ! -name .env.tpl -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256)
+  printf '%s' "$env_content"
+} | shasum -a 256 | cut -c1-16)
+env_content="STACK_HASH=$stack_hash"$'\n'"$env_content"
+
 remote "mkdir -p $dir && { docker network inspect web >/dev/null 2>&1 || docker network create web; }"
 
 # --delete keeps the VM in step with the repo; .env is excluded so it survives.
 # Service data lives in named Docker volumes, never inside ~/services/<service>.
-rsync -a --delete --exclude .env --exclude .env.tpl -e "ssh ${ssh_opts[*]}" "$service/" "$host:$dir/"
+# Local clutter stays home too: tool state (.claude) and Finder files (.DS_Store).
+rsync -a --delete --exclude .env --exclude .env.tpl --exclude .claude/ --exclude .DS_Store \
+  -e "ssh ${ssh_opts[*]}" "$service/" "$host:$dir/"
 printf '%s\n' "$env_content" | remote "umask 077 && cat > $dir/.env"
 
 # Stacks with a Dockerfile (like backup) are built on the VM instead of pulled.

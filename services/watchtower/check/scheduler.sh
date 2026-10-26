@@ -20,6 +20,8 @@ while true; do
   wait=$(((target - now + 86400) % 86400))
   if [ "$wait" -eq 0 ]; then wait=86400; fi
   sleep "$wait"
+  # /start lets healthchecks.io time the run and notice one that never finishes.
+  ping /start
   # Each check reports to Gatus itself; try again tomorrow if one fails.
   ok=yes
   check.sh main || ok=no

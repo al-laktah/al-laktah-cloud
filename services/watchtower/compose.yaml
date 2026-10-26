@@ -8,7 +8,10 @@ services:
     image: twinproduction/gatus:v5.37.0
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8080:8080" # dashboard only through an SSH tunnel, see services/README.md
+      # Dashboard and API on every interface, but only two ways in: OCI's firewall lets
+      # just the main VM through, across the VCN (Homepage's Gatus widget), and your
+      # devices come in over NetBird. Nothing reaches it from the internet.
+      - "8080:8080"
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in services/config.env}
       NTFY_TOPIC: ${NTFY_TOPIC:?missing from .env.tpl}

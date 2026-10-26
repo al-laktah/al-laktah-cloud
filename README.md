@@ -54,6 +54,7 @@ flowchart LR
     igw -->|HTTPS| caddy
     caddy --> outline & pocketid & shorti & homepage
     homepage -.->|OIDC sign-in| pocketid
+    homepage -.->|Gatus widget, across the VCN| gatus
     outline -.->|OIDC sign-in| pocketid
     backup -->|instance principal, read-write| backups
     check -->|instance principal, read-only| backups
@@ -108,7 +109,7 @@ All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs
 | `network.tf` | VCN, internet gateway, route table, security list, subnet, and the shared network security groups (web, WireGuard) |
 | `compute.tf` | Image and shape lookups, and the A1 VM itself |
 | `dns.tf` | Cloudflare A records pointing at the VM, its own and one per website (DNS only, not proxied) |
-| `watchtower.tf` | The watchtower VM (Always Free AMD micro) |
+| `watchtower.tf` | The watchtower VM (Always Free AMD micro), and the network security group that lets only the main VM read Gatus |
 | `netbird.tf` | The NetBird VPN server (the second AMD micro), with its own network security group for STUN |
 | `bastion.tf` | The OCI Bastion, for break-glass SSH when NetBird is down |
 | `backup.tf` | Dynamic groups and policies: the main VM and the NetBird VM may each write to their own backups bucket, and the watchtower may only read them |

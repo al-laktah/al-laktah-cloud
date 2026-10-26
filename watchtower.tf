@@ -19,7 +19,8 @@ resource "oci_core_instance" "watchtower" {
     subnet_id        = oci_core_subnet.public.id
     assign_public_ip = true
     hostname_label   = var.watchtower_name
-    nsg_ids          = [oci_core_network_security_group.wireguard.id] # serves nothing publicly
+    # Nothing public: WireGuard for NetBird, and Gatus' API for the main VM only.
+    nsg_ids = [oci_core_network_security_group.wireguard.id, oci_core_network_security_group.gatus.id]
   }
 
   metadata = {
@@ -35,6 +36,32 @@ resource "oci_core_instance" "watchtower" {
     precondition {
       condition     = length(local.micro_availability_domains) > 0
       error_message = "No availability domain in this region offers VM.Standard.E2.1.Micro."
+    }
+  }
+}
+
+# Gatus' API and dashboard (port 8080), for the main VM only: Homepage's Gatus widget
+# reads the check results from there, across the VCN. Your devices reach the dashboard
+# over NetBird instead, which this firewall never sees (see services/README.md).
+resource "oci_core_network_security_group" "gatus" {
+  compartment_id = local.compartment_id
+  vcn_id         = oci_core_vcn.main.id
+  display_name   = "gatus-nsg"
+  freeform_tags  = local.common_tags
+}
+
+resource "oci_core_network_security_group_security_rule" "gatus_from_main_vm" {
+  network_security_group_id = oci_core_network_security_group.gatus.id
+  direction                 = "INGRESS"
+  protocol                  = "6" # TCP
+  source                    = "${oci_core_instance.arm_vm.private_ip}/32"
+  source_type               = "CIDR_BLOCK"
+  description               = "Gatus API, for Homepage on the main VM"
+
+  tcp_options {
+    destination_port_range {
+      min = 8080
+      max = 8080
     }
   }
 }

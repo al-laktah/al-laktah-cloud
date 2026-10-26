@@ -11,6 +11,8 @@ services:
       HOMEPAGE_ALLOWED_HOSTS: cloud.${DOMAIN:?set DOMAIN in services/config.env}
       HOMEPAGE_EXTERNAL_URL: https://cloud.${DOMAIN}
       HOMEPAGE_VAR_DOMAIN: ${DOMAIN} # {{HOMEPAGE_VAR_DOMAIN}} in the config files
+      # Gatus on the watchtower, across the VCN (its firewall lets only this VM in)
+      HOMEPAGE_VAR_GATUS_URL: http://${WATCHTOWER_PRIVATE_IP:?set in services/config.env}:8080
       # Sign-in through Pocket ID. Who may sign in is decided there (the client's
       # allowed groups); Homepage lets in anyone Pocket ID accepts.
       HOMEPAGE_AUTH_ENABLED: "true"
@@ -20,10 +22,11 @@ services:
       HOMEPAGE_OIDC_CLIENT_SECRET: ${HOMEPAGE_OIDC_CLIENT_SECRET:?missing from .env.tpl}
       HOMEPAGE_OIDC_NAME: Pocket ID
       HOMEPAGE_OIDC_AUTO_LOGIN: "true" # straight to Pocket ID; /auth/signin?autologin=0 shows the page
-      # Run as the VM's ubuntu user, so nothing in ./config ends up owned by root,
-      # where deploy.sh's sync couldn't replace it. Logs go to `docker compose logs`.
-      PUID: 1000
-      PGID: 1000
+      # Run as the VM's own user (deploy.sh looks up its IDs). Homepage hands ./config
+      # to this user at startup, so with any other ID the next sync couldn't write
+      # there any more. Logs go to `docker compose logs`, not into ./config.
+      PUID: ${HOST_UID:-1000}
+      PGID: ${HOST_GID:-1000}
       LOG_TARGETS: stdout
     labels:
       stack-hash: ${STACK_HASH:-} # restart when the config changes (see deploy.sh)
