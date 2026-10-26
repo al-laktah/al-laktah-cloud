@@ -17,6 +17,7 @@ Docker Compose stacks that run on the VMs. The main VM's stacks all sit behind o
 
 - **DNS:** Terraform creates an A record for each hostname in `service_dns_names` (`terraform.tfvars`).
 - **Routing:** the edge proxy terminates TLS and forwards each hostname to a container by name, over a shared external Docker network called `web`. Databases and caches stay on their own stack's private network.
+- **VPN-only sites:** a site file that starts with `import vpn_only` answers only NetBird addresses (and the VCN, for the watchtower); everyone else gets a 403. `auth` stays public, because you sign in to NetBird with it. See [Behind NetBird](#behind-netbird).
 - **Secrets:** they live in 1Password. Each stack commits an `.env.tpl` that contains only `op://` references. `deploy.sh` fills them in with `op inject` and writes the result straight to `.env` on the VM.
 - **On the VM:** each stack lives in `~/services/<service>`, and its data is in named Docker volumes (`docker volume ls`).
 
@@ -116,7 +117,7 @@ The backups go to the `backups` bucket that `bootstrap/` creates. Because that b
    op item create --vault=Private --category="Secure Note" --title="Backups" \
      "restic_password[password]=$(openssl rand -base64 32)"
    ```
-4. **The settings:** copy the output of `terraform output -raw backup_config` into `services/config.env`.
+4. **The settings:** copy the output of `terraform output -raw services_config` into `services/config.env`.
 5. **Deploy, create the restic repository (once, ever), then run a first backup right away:**
    ```sh
    services/deploy.sh backup
@@ -183,7 +184,7 @@ Delete `~/restore` when you're done; it holds unencrypted copies of everything.
 
 A separate, Always Free AMD micro VM (`watchtower.tf`) watches the main VM from outside, because a VM that hangs can't report on itself. It runs two containers (`services/watchtower/`):
 
-- **Gatus** checks `wiki`, `auth`, `shorti` and `netbird` over HTTPS and the main VM's SSH port, every minute. It sends an alert to your phone through [ntfy](https://ntfy.sh) after 3 failed checks in a row, or when a certificate has less than 10 days left. It sends another when things recover.
+- **Gatus** checks `wiki`, `auth`, `shorti` and `netbird` over HTTPS and the main VM's SSH port, every minute. The VPN-only sites and SSH are checked across the VCN, at the main VM's private IP (`MAIN_VM_PRIVATE_IP`). It sends an alert to your phone through [ntfy](https://ntfy.sh) after 3 failed checks in a row, or when a certificate has less than 10 days left. It sends another when things recover.
 - **backup-check** verifies the backups of both VMs every day at 06:00 UTC, first the main VM's, then the NetBird VM's:
   1. The latest backup is less than 26 hours old.
   2. The repository passes `restic check`, which also downloads and verifies a different quarter of all backup data each day (all of it every 4 days).
@@ -283,6 +284,24 @@ Sign-in uses NetBird's built-in identity provider, and Pocket ID can be added as
 
    A device can only sign in again as the user who added it. To sign in to existing devices with Pocket ID, delete them under **Peers**, then add them again while signed in with Pocket ID.
 
+### Behind NetBird
+
+Only `auth` (Pocket ID) and `netbird` itself face the internet. SSH on every VM, the wiki and shorti answer only over NetBird: the VMs join NetBird as peers, and NetBird's DNS sends your devices to the main VM's NetBird address for the private sites. Do it in this order, so there's always a way in:
+
+1. **The firewalls:** `terraform apply` with `ssh_allowed_cidr = "0.0.0.0/0"` still in `terraform.tfvars`. It creates the Bastion, moves the web ports to network security groups and opens WireGuard's port; SSH stays open. Then test the Bastion once (see the main README's *Break-glass access*), so you know it works before you need it.
+2. **Groups and a setup key**, in the NetBird dashboard:
+   - Under **Groups**, create `admins` and `servers`. Add your own devices to `admins`.
+   - Under **Setup Keys**, create a key named `servers`: reusable, usage limit 3, expires in 1 day, auto-assigned group `servers`. A VM joined with a setup key never has to sign in again.
+3. **Join each VM** and open WireGuard's port in its own firewall (add `3478` on the NetBird VM, and `OPEN_WEB_PORTS=no` on the watchtower):
+   ```sh
+   ssh <host> 'sudo NETBIRD_URL=https://netbird.<domain> NETBIRD_SETUP_KEY=<key> OPEN_UDP_PORTS=51820 bash -s' < host/setup-vm.sh
+   ```
+   It ends by printing the VM's NetBird IP and name (`FQDN`).
+4. **SSH over NetBird:** in `~/.ssh/config`, point each host at its NetBird name, e.g. `HostName arm-vm-01.netbird.selfhosted`, and check that `ssh <host>` and `services/deploy.sh <stack>` still work.
+5. **Access policy:** under **Access Control → Policies**, add `admins` → `servers` (all protocols), then disable the `Default` policy, which lets every peer reach every other. Check SSH again.
+6. **The private sites:** under **DNS → Zones**, add one zone per private name, distributed to `admins`: zone `wiki.<domain>` with an A record `wiki.<domain>`, and zone `shorti.<domain>` with an A record `shorti.<domain>`, both pointing at the main VM's NetBird IP. One zone for the whole `<domain>` would route every name under it (`auth` too) through NetBird's DNS; one zone per name keeps NetBird's DNS out of everything else. Then set `MAIN_VM_PRIVATE_IP` in `config.env` (from `terraform output -raw services_config`) and deploy `edge` and `watchtower`. Check that the wiki loads with NetBird on, and shows *Only available over the VPN* with it off.
+7. **Close SSH:** delete the `ssh_allowed_cidr` line from `terraform.tfvars`, then `terraform apply` again. SSH now answers only over NetBird, the Bastion and the VCN.
+
 ### Day to day
 
 ```sh
@@ -303,7 +322,7 @@ They go to a bucket of their own, `netbird-backups`. The NetBird VM is the most 
 
 1. **The bucket:** `cd bootstrap && terraform apply`. Expect 1 to add.
 2. **The permissions:** `terraform apply` in the repo root. Expect 2 to add (the NetBird VM's dynamic group and policy) and 1 to change (the watchtower's policy can now read the new bucket too).
-3. **The setting:** make sure `services/config.env` has `NETBIRD_BACKUP_BUCKET` (it's in `terraform output -raw backup_config`).
+3. **The setting:** make sure `services/config.env` has `NETBIRD_BACKUP_BUCKET` (it's in `terraform output -raw services_config`).
 4. **Deploy, create the restic repository (once, ever), then run a first backup right away:**
    ```sh
    services/deploy.sh netbird

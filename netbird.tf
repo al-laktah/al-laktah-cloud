@@ -3,10 +3,8 @@
 # to log in and find each other; their traffic flows directly between them when it
 # can, and through the relay here only when it can't.
 
-# A network security group (NSG) is a firewall attached to individual VNICs instead
-# of a whole subnet. A VNIC gets the union of its subnet's security list and its
-# NSGs, so this opens STUN on the NetBird VM only. TCP 80 and 443 come from the
-# subnet's security list (network.tf).
+# STUN, in the NetBird VM's own network security group (see network.tf for what an
+# NSG is). The VM also gets the shared web and wireguard NSGs.
 resource "oci_core_network_security_group" "netbird" {
   compartment_id = local.compartment_id
   vcn_id         = oci_core_vcn.main.id
@@ -48,7 +46,11 @@ resource "oci_core_instance" "netbird" {
     subnet_id        = oci_core_subnet.public.id
     assign_public_ip = true
     hostname_label   = var.netbird_name
-    nsg_ids          = [oci_core_network_security_group.netbird.id]
+    nsg_ids = [
+      oci_core_network_security_group.netbird.id,
+      oci_core_network_security_group.web.id,
+      oci_core_network_security_group.wireguard.id,
+    ]
   }
 
   metadata = {

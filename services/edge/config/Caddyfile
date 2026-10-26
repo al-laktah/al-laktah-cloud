@@ -1,2 +1,12 @@
 # One file per site under sites/. {$DOMAIN} comes from services/config.env.
+
+# For sites that answer only over the VPN: put `import vpn_only` at the top of the
+# site block. NetBird gives every device an address in 100.64.0.0/10, and
+# private_ranges covers the VCN (the watchtower's checks) and Docker's own networks.
+# Anyone else gets a 403. The name stays in public DNS, so certificates keep renewing.
+(vpn_only) {
+	@outside not remote_ip 100.64.0.0/10 private_ranges
+	respond @outside "Only available over the VPN." 403
+}
+
 import sites/*.caddy

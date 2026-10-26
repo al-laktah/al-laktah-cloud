@@ -38,15 +38,30 @@ output "netbird_hostname" {
   value       = cloudflare_dns_record.netbird.name
 }
 
-output "backup_config" {
-  description = "Settings for services/config.env, used by the backup stack."
+output "services_config" {
+  description = "Settings for services/config.env, used by the backup stacks and the watchtower."
   value       = <<-EOT
     OCI_NAMESPACE=${data.oci_objectstorage_namespace.this.namespace}
     OCI_REGION=${oci_core_instance.arm_vm.region}
     OCI_COMPARTMENT_OCID=${var.tenancy_ocid}
     BACKUP_BUCKET=${var.backup_bucket_name}
     NETBIRD_BACKUP_BUCKET=${var.netbird_backup_bucket_name}
+    MAIN_VM_PRIVATE_IP=${oci_core_instance.arm_vm.private_ip}
   EOT
+}
+
+output "private_ips" {
+  description = "Each VM's address inside the VCN: the target for a Bastion session."
+  value = {
+    (var.instance_name)   = oci_core_instance.arm_vm.private_ip
+    (var.watchtower_name) = oci_core_instance.watchtower.private_ip
+    (var.netbird_name)    = oci_core_instance.netbird.private_ip
+  }
+}
+
+output "bastion_id" {
+  description = "OCID of the break-glass bastion, for `oci bastion session create-port-forwarding`."
+  value       = oci_bastion_bastion.breakglass.id
 }
 
 output "image_name" {

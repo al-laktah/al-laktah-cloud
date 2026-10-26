@@ -78,6 +78,8 @@ resource "oci_core_instance" "arm_vm" {
     subnet_id        = oci_core_subnet.public.id
     assign_public_ip = true
     hostname_label   = var.instance_name
+    # Firewalls for this VM only (network.tf). Changing them updates the VM in place.
+    nsg_ids = [oci_core_network_security_group.web.id, oci_core_network_security_group.wireguard.id]
   }
 
   # cloud-init installs the SSH keys on first boot (see local.ssh_user_data in main.tf)

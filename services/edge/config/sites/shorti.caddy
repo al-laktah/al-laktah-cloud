@@ -1,5 +1,6 @@
 # shorti is deployed from its own repo (github.com/al-laktah/shorti); its frontend
 # joins the "web" network as "shorti".
 shorti.{$DOMAIN} {
+	import vpn_only # remove to make short links work for everyone again
 	reverse_proxy shorti:80
 }

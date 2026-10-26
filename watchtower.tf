@@ -19,6 +19,7 @@ resource "oci_core_instance" "watchtower" {
     subnet_id        = oci_core_subnet.public.id
     assign_public_ip = true
     hostname_label   = var.watchtower_name
+    nsg_ids          = [oci_core_network_security_group.wireguard.id] # serves nothing publicly
   }
 
   metadata = {

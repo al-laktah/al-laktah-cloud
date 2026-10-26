@@ -13,6 +13,12 @@ services:
       DOMAIN: ${DOMAIN:?set DOMAIN in services/config.env}
       NTFY_TOPIC: ${NTFY_TOPIC:?missing from .env.tpl}
       GATUS_PUSH_TOKEN: ${GATUS_PUSH_TOKEN:?missing from .env.tpl}
+      MAIN_VM_PRIVATE_IP: ${MAIN_VM_PRIVATE_IP:?set in services/config.env}
+    # The VPN-only sites answer only NetBird and VCN addresses, so Gatus reaches them
+    # across the VCN: these names point straight at the main VM's private IP.
+    extra_hosts:
+      - "wiki.${DOMAIN}:${MAIN_VM_PRIVATE_IP}"
+      - "shorti.${DOMAIN}:${MAIN_VM_PRIVATE_IP}"
     volumes:
       - ./gatus:/config:ro
       - gatus-data:/data # check history (SQLite)

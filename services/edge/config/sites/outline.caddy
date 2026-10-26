@@ -1,3 +1,4 @@
 wiki.{$DOMAIN} {
+	import vpn_only
 	reverse_proxy outline:3000
 }

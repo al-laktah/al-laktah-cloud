@@ -16,7 +16,7 @@ ssh_public_keys = [
 # region                    = "eu-frankfurt-1" # defaults to the region in ~/.oci/config
 # compartment_ocid          = null             # null = root compartment
 # oci_config_profile        = "DEFAULT"
-# ssh_allowed_cidr          = "0.0.0.0/0"
+# ssh_allowed_cidr          = null             # null = SSH only from inside the VCN; "0.0.0.0/0" = from anywhere
 # service_dns_names         = []               # websites on the VM, e.g. ["shorti.example.com"]
 # availability_domain_index = 0
 # instance_ocpus            = 2

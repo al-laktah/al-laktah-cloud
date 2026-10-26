@@ -31,3 +31,6 @@ tfplan
 # Never commit OCI API keys
 *.pem
 CLAUDE.md
+
+# macOS folder metadata
+.DS_Store

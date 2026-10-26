@@ -9,11 +9,16 @@
 #                            ssh <host> 'sudo OPEN_WEB_PORTS=no bash -s' < host/setup-vm.sh
 # For the NetBird VM, also open STUN's UDP port:
 #                            ssh <host> 'sudo OPEN_UDP_PORTS=3478 bash -s' < host/setup-vm.sh
+# To join the VM to NetBird, pass a setup key from the dashboard, and open WireGuard's
+# port (see services/README.md):
+#   ssh <host> 'sudo NETBIRD_URL=https://netbird.example.com NETBIRD_SETUP_KEY=<key> OPEN_UDP_PORTS=51820 bash -s' < host/setup-vm.sh
 # Running it again is safe, it only does what is still missing.
 set -euo pipefail
 
 OPEN_WEB_PORTS=${OPEN_WEB_PORTS:-yes}
-OPEN_UDP_PORTS=${OPEN_UDP_PORTS:-} # extra UDP ports to open, separated by spaces
+OPEN_UDP_PORTS=${OPEN_UDP_PORTS:-}       # extra UDP ports to open, separated by spaces
+NETBIRD_URL=${NETBIRD_URL:-}             # your NetBird server, e.g. https://netbird.example.com
+NETBIRD_SETUP_KEY=${NETBIRD_SETUP_KEY:-} # set both to join the VM to NetBird
 
 if [ "$(id -u)" -ne 0 ]; then
 	echo "Run this with sudo" >&2
@@ -109,6 +114,32 @@ usermod -aG docker "$USER_NAME"
 if [ ! -f /etc/docker/daemon.json ]; then
 	echo '{ "log-driver": "local" }' > /etc/docker/daemon.json
 	systemctl restart docker
+fi
+
+if [ -n "$NETBIRD_SETUP_KEY" ]; then
+	echo "== Joining NetBird"
+	if [ -z "$NETBIRD_URL" ]; then
+		echo "Set NETBIRD_URL too, e.g. https://netbird.example.com" >&2
+		exit 1
+	fi
+	if ! command -v netbird >/dev/null; then
+		# NetBird's signed apt repository. The package installs and starts the service.
+		apt_get install gnupg
+		curl -fsSL https://pkgs.netbird.io/debian/public.key |
+			gpg --dearmor --yes --output /usr/share/keyrings/netbird-archive-keyring.gpg
+		echo 'deb [signed-by=/usr/share/keyrings/netbird-archive-keyring.gpg] https://pkgs.netbird.io/debian stable main' \
+			> /etc/apt/sources.list.d/netbird.list
+		apt_get update
+		apt_get install netbird
+	fi
+	# A setup key adds the VM as a peer that never has to sign in again, unlike a
+	# person's device. Skip it if the VM is already connected.
+	if netbird status 2>/dev/null | grep -q '^Management: Connected'; then
+		echo "already connected"
+	else
+		netbird up --management-url "$NETBIRD_URL" --setup-key "$NETBIRD_SETUP_KEY"
+	fi
+	netbird status | grep -E '^(Management|Signal|FQDN|NetBird IP):'
 fi
 
 echo "== Preparing for the services"

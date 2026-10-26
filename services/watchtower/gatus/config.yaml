@@ -63,7 +63,8 @@ endpoints:
 
   - name: ssh
     group: server
-    url: "tcp://cloud.${DOMAIN}:22" # the A1 VM's own DNS name (dns_name in terraform.tfvars)
+    # Across the VCN: SSH no longer answers on the public IP (only NetBird and the VCN).
+    url: "tcp://${MAIN_VM_PRIVATE_IP}:22"
     interval: 1m
     conditions:
       - "[CONNECTED] == true"

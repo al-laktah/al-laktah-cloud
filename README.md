@@ -3,14 +3,14 @@
 [![Terraform](https://github.com/al-laktah/al-laktah-cloud/actions/workflows/terraform.yml/badge.svg)](https://github.com/al-laktah/al-laktah-cloud/actions/workflows/terraform.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-My personal cloud on Oracle Cloud's **Always Free** tier, at no cost. Terraform builds the infrastructure: an Arm VM, its network, Cloudflare DNS records and remote state. The services on the VM, an Outline wiki and passkey sign-in, run as Docker Compose stacks behind Caddy and are backed up every night. A second, tiny VM watches it all from outside, and a third runs the NetBird VPN server.
+My personal cloud on Oracle Cloud's **Always Free** tier, at no cost. Terraform builds the infrastructure: an Arm VM, its network, Cloudflare DNS records and remote state. The services on the VM, an Outline wiki and passkey sign-in, run as Docker Compose stacks behind Caddy and are backed up every night. A second, tiny VM watches it all from outside, and a third runs a NetBird VPN server. Only sign-in and the VPN itself face the internet: SSH, the wiki and everything else answer only over the VPN.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
     tf["Terraform CLI<br/>(laptop or CI)"]
-    client["Browser / SSH client"]
+    client["Browser<br/>anyone on the internet"]
     devices["Laptop / phone<br/>NetBird client"]
     phone["Phone<br/>ntfy alerts"]
 
@@ -24,7 +24,8 @@ flowchart LR
         nbbackups[("Object Storage bucket<br/>NetBird backups<br/>encrypted · nightly")]
         subgraph vcn["VCN 10.0.0.0/16"]
             igw["Internet gateway"]
-            subgraph subnet["Public subnet 10.0.1.0/24<br/>security list: SSH, HTTP(S) in, all out"]
+            bastion["OCI Bastion<br/>break-glass SSH"]
+            subgraph subnet["Public subnet 10.0.1.0/24<br/>security list: SSH only from inside the VCN<br/>NSGs per VM: web, WireGuard, STUN"]
                 subgraph vm["Ampere A1 VM · 2 OCPU · 12 GB RAM · Ubuntu 24.04"]
                     caddy["Caddy<br/>automatic HTTPS"]
                     outline["Outline wiki<br/>+ Postgres, Redis"]
@@ -48,24 +49,27 @@ flowchart LR
     tf <-->|state + lock| state
     vm -.->|public IP feeds the records| dns
     client -->|1. resolve name| dns
-    client -->|2. HTTPS, SSH| igw
+    client -->|2. HTTPS: sign-in| igw
     igw -->|HTTPS| caddy
-    igw -->|SSH| vm
     caddy --> outline & pocketid & shorti
     outline -.->|OIDC sign-in| pocketid
     backup -->|instance principal, read-write| backups
     check -->|instance principal, read-only| backups
     netbird -->|instance principal, read-write| nbbackups
     check -->|read-only| nbbackups
-    gatus -.->|checks every minute| igw
+    gatus -.->|checks every minute: public sites| igw
+    gatus -.->|private sites, SSH: across the VCN| vm
     check -->|daily result| gatus
     gatus -->|alerts| phone
     devices -->|sign in, find peers| igw
+    devices ==>|WireGuard: SSH, wiki, shorti| vm
+    bastion -.->|SSH to a private IP, if NetBird is down| vm
     igw -->|HTTPS, STUN| netbird
 ```
 
 - **Compute:** one Ampere A1 (Arm) VM with **2 OCPUs, 12 GB RAM and a 50 GB boot volume**, running Ubuntu 24.04.
-- **Network:** a dedicated VCN and public subnet. The security list allows SSH, HTTP and HTTPS in and all traffic out, and logins are key-only: the keys in `ssh_public_keys`, YubiKey `sk-` keys included.
+- **Network:** a dedicated VCN and public subnet. The subnet's security list lets SSH in only from inside the VCN; each VM gets just the ports it needs through network security groups: HTTPS for the two VMs that serve public sites, STUN for NetBird, and WireGuard for all three. Logins are key-only: the keys in `ssh_public_keys`, YubiKey `sk-` keys included.
+- **Access:** day to day, SSH and the private sites go through NetBird. If NetBird itself is down, an OCI Bastion session reaches any VM's SSH from inside the VCN (see [Break-glass access](#break-glass-access)).
 - **DNS:** a Cloudflare A record (`dns_name`) that follows the VM's public IP, plus one for each website in `service_dns_names`. They are DNS-only, so SSH goes straight to the VM and the websites get their HTTPS certificates on the VM itself.
 - **State:** a private, versioned Object Storage bucket with automatic locking, created by a separate `bootstrap/` config.
 - **Services:** Docker Compose stacks in [`services/`](services/README.md). They sit behind one Caddy reverse proxy that handles HTTPS for every site, and Pocket ID gives them passkey sign-in.
@@ -81,6 +85,7 @@ All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs
 - **Guard rails as code.** Variable validation rejects anything beyond the free tier and catches malformed IDs before any API call is made.
 - **Remote state done properly.** The bucket is bootstrapped separately (the chicken-and-egg problem), versioned for recovery, locked against concurrent runs and protected with `prevent_destroy`.
 - **Working around real platform limits.** OCI's API rejects FIDO2 (`sk-`) SSH keys, so keys go in via cloud-init `user_data`. `ignore_changes` stops new image releases from forcing a rebuild.
+- **Almost nothing exposed.** Only sign-in (Pocket ID) and the VPN server face the internet. SSH and the private sites answer only to NetBird's addresses, enforced twice: by OCI's firewalls for SSH, and by Caddy for the sites. A switch in `terraform.tfvars` (`ssh_allowed_cidr`) opened SSH during the migration, and an OCI Bastion is the way in that doesn't depend on the VPN.
 - **No credentials on the server.** The VM writes its backups as an OCI *instance principal*: a dynamic group plus a policy that limits it to one bucket. Nothing on the VM could leak access to anything else.
 - **Backups you can restore from.** Consistent database copies (`pg_dump`, and SQLite's online backup), encrypted and deduplicated by restic, with a retention schedule, nightly integrity checks and a documented restore procedure.
 - **Verification from outside.** A separate VM, with read-only access, proves daily that the backups are fresh, intact and restorable, and monitors the sites. Its own silence is caught too: by a heartbeat in Gatus, and by an external dead-man's switch.
@@ -98,16 +103,17 @@ All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs
 | `providers.tf` | Configures the OCI provider (auth from `~/.oci/config`) and the Cloudflare provider (auth from `CLOUDFLARE_API_TOKEN`) |
 | `variables.tf` | Inputs, with validation that keeps you inside the free limits |
 | `main.tf` | `locals`: shared derived values such as the compartment and tags |
-| `network.tf` | VCN, internet gateway, route table, security list, subnet |
+| `network.tf` | VCN, internet gateway, route table, security list, subnet, and the shared network security groups (web, WireGuard) |
 | `compute.tf` | Image and shape lookups, and the A1 VM itself |
 | `dns.tf` | Cloudflare A records pointing at the VM, its own and one per website (DNS only, not proxied) |
 | `watchtower.tf` | The watchtower VM (Always Free AMD micro) |
 | `netbird.tf` | The NetBird VPN server (the second AMD micro), with its own network security group for STUN |
+| `bastion.tf` | The OCI Bastion, for break-glass SSH when NetBird is down |
 | `backup.tf` | Dynamic groups and policies: the main VM and the NetBird VM may each write to their own backups bucket, and the watchtower may only read them |
-| `outputs.tf` | Values printed after `apply` (IP, hostname, SSH command) |
+| `outputs.tf` | Values printed after `apply`: IPs and hostnames, the VMs' private IPs, the bastion's ID and the settings for `services/config.env` |
 | `terraform.tfvars.example`, `backend.hcl.example`, `terraform.env.example` | Templates for your personal values |
 | `bootstrap/` | A separate config for the long-lived buckets, Terraform state and backups, that must outlive the VM |
-| `host/setup-vm.sh` | Prepares the VM itself for the services: updates, its own firewall, Docker, log rotation |
+| `host/setup-vm.sh` | Prepares a VM itself: updates, its own firewall, Docker, log rotation, and joining NetBird |
 | `services/` | Docker Compose stacks (Caddy, Pocket ID, Outline, backups, the watchtower's Gatus and backup checks, and NetBird) and `deploy.sh`. See [services/README.md](services/README.md) |
 | `.github/workflows/terraform.yml` | CI: `fmt` and `validate` for both Terraform configs, `docker compose config` for every stack, and ShellCheck for every script |
 
@@ -258,11 +264,28 @@ terraform apply -replace=oci_core_instance.arm_vm   # rebuild the VM on purpose 
 - **"Out of host capacity"** means there is no free A1 capacity in that availability domain right now. Set `availability_domain_index = 1` (or `2`, if your region has 3 ADs), or retry later. Upgrading the account to Pay As You Go usually fixes this, and resources within the Always Free limits remain free.
 - **Keep `availability_domain_index` matching where the VM actually is.** An instance can't move between availability domains, so changing it means destroy and recreate.
 - **SSH keys are fixed at launch.** They reach the VM through cloud-init `user_data` (OCI's own `ssh_authorized_keys` field rejects YubiKey `sk-` keys), and OCI rejects changes to `user_data` after an instance starts. To add or remove a key later, edit `~/.ssh/authorized_keys` on the VM, or update `ssh_public_keys` and rebuild with `-replace`.
-- **SSH is open to the whole internet**, so expect constant bot login attempts in the logs. They fail because the image allows key-only logins. To narrow access later, set `ssh_allowed_cidr`, or put the VM behind Tailscale or the OCI Bastion service.
+- **SSH answers only inside the VCN.** From your laptop, SSH goes through NetBird; if NetBird is down, use the Bastion (below). To open SSH to the internet again, for example on a fresh setup before NetBird runs, set `ssh_allowed_cidr = "0.0.0.0/0"`.
 - **Idle reclamation.** Oracle may reclaim an Always Free VM if, over 7 days, its 95th-percentile CPU, network *and* memory utilisation are all under 20%.
 - **The VM has its own firewall too.** Oracle's Ubuntu images ship with restrictive `iptables` rules that allow only SSH, so ports 80 and 443 also have to be opened on the VM itself (`host/setup-vm.sh` does that). Any other port takes both changes: a rule in OCI (the subnet's security list in `network.tf`, or a VM's own network security group like the one in `netbird.tf`) *and* the VM's firewall.
 - **State locking.** `plan` and `apply` hold a lock in the bucket, so two runs can't collide. If a run is killed and leaves a stale lock, the next run prints its ID; clear it with `terraform force-unlock <LOCK_ID>`. Previous state versions are under the bucket's object version history in the Console.
 - **The image is chosen once.** `compute.tf` ignores newer Ubuntu images after the first apply, so they don't trigger a rebuild. Use `-replace` when you want one.
+
+## Break-glass access
+
+If NetBird is down, SSH to a VM through the OCI Bastion instead. A session lasts up to 3 hours and only accepts the public key it was created with (an Ed25519 or RSA key; not a YubiKey `sk-` key).
+
+1. In the OCI Console, open **Identity & Security → Bastion → breakglass → Create session**:
+   - **Session type:** SSH port forwarding session
+   - **Connect to the target host by using:** IP address, with the VM's private IP from `terraform output private_ips`, port 22
+   - **SSH key:** paste your public key
+2. When the session is active, open its **⋮ → Copy SSH command**. It looks like this:
+   ```sh
+   ssh -i <private key> -N -L 2222:<private IP>:22 -p 22 <session OCID>@host.bastion.<region>.oci.oraclecloud.com
+   ```
+   For a key held by an agent (such as 1Password), use the `.pub` file as `-i` and add `-o IdentitiesOnly=yes`.
+3. Leave that running, and connect through the tunnel in a second terminal: `ssh -p 2222 ubuntu@localhost`.
+
+With the OCI CLI, `oci bastion session create-port-forwarding --bastion-id "$(terraform output -raw bastion_id)" --target-private-ip <private IP> --target-port 22 --ssh-public-key-file <key>.pub` creates the session instead.
 
 ## Ideas for next steps
 

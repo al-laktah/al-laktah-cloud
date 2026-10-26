@@ -49,13 +49,13 @@ variable "public_subnet_cidr" {
 }
 
 variable "ssh_allowed_cidr" {
-  description = "Source range allowed to SSH in. Open to the internet by default; access is controlled by ssh_public_keys."
+  description = "Who may reach SSH (port 22) directly. null, the default, means only from inside the VCN (the Bastion and the watchtower); day to day, SSH goes through NetBird. Set \"0.0.0.0/0\" to open it to the internet, e.g. while setting NetBird up."
   type        = string
-  default     = "0.0.0.0/0"
+  default     = null
 
   validation {
-    condition     = can(cidrhost(var.ssh_allowed_cidr, 0))
-    error_message = "ssh_allowed_cidr must be a valid CIDR block, e.g. \"203.0.113.7/32\"."
+    condition     = var.ssh_allowed_cidr == null || can(cidrhost(var.ssh_allowed_cidr, 0))
+    error_message = "ssh_allowed_cidr must be null or a valid CIDR block, e.g. \"0.0.0.0/0\"."
   }
 }
 
