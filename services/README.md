@@ -54,7 +54,7 @@ The script syncs the stack to `~/services/<service>`, writes its `.env` and runs
    services/deploy.sh pocket-id
    ```
    Open `https://auth.<domain>/setup`, create your admin account and add your YubiKey as a passkey. Add a **second passkey** too (e.g. one stored in 1Password), so losing the YubiKey doesn't lock you out.
-4. **The Outline OIDC client.** In Pocket ID, go to **OIDC Clients → Add**. Name it `Outline` and set the callback URL to `https://wiki.<domain>/auth/oidc.callback`. The client secret is shown **only once**, so store it right away:
+4. **The Outline OIDC client.** In Pocket ID, go to **OIDC Clients → Add**. Name it `Outline`, set the callback URL to `https://wiki.<domain>/auth/oidc.callback`, and the logout callback URL to exactly `https://wiki.<domain>` (no trailing slash). Without that, signing out leaves you on Pocket ID's own logout page instead of back at Outline, which in the desktop app looks like nothing happened. The client secret is shown **only once**, so store it right away:
    ```sh
    op item edit Outline --vault=Private \
      "oidc_client_id[text]=<client id>" "oidc_client_secret[password]=<client secret>"
