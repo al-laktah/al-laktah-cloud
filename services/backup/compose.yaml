@@ -27,14 +27,21 @@ services:
       PGUSER: outline
       PGDATABASE: outline
       PGPASSWORD: ${POSTGRES_PASSWORD:?missing from .env.tpl}
+      # ...and to NetBox's over its stack's network (backup.sh passes these to pg_dump)
+      NETBOX_PGHOST: netbox-postgres
+      NETBOX_PGPASSWORD: ${NETBOX_POSTGRES_PASSWORD:?missing from .env.tpl}
     volumes:
       - cache:/cache
       # The other stacks' data. Read-write only where SQLite needs its lock files.
       - outline-files:/src/outline-files:ro
       - pocket-id-data:/src/pocket-id
       - shorti-data:/src/shorti
+      - netbox-media:/src/netbox-media:ro
+      - netbox-reports:/src/netbox-reports:ro
+      - netbox-scripts:/src/netbox-scripts:ro
     networks:
       - outline
+      - netbox
 
 volumes:
   cache:
@@ -47,8 +54,20 @@ volumes:
   shorti-data:
     external: true
     name: shorti_shorti-data
+  netbox-media:
+    external: true
+    name: netbox_media
+  netbox-reports:
+    external: true
+    name: netbox_reports
+  netbox-scripts:
+    external: true
+    name: netbox_scripts
 
 networks:
   outline:
     external: true
     name: outline_default
+  netbox:
+    external: true
+    name: netbox_default

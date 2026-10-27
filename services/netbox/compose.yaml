@@ -1,0 +1,122 @@
+# NetBox (network documentation: IP addresses, prefixes, devices, racks) with its own
+# Postgres and Redis. Only NetBox joins the "web" network; the database and Redis stay
+# on this stack's private default network. Sign-in is through Pocket ID, plus a local
+# admin for when Pocket ID is down.
+name: netbox
+
+# Shared by the web app and its background worker.
+x-netbox: &netbox
+  image: docker.io/netboxcommunity/netbox:v4.7.3-5.1.1
+  restart: unless-stopped
+  user: "netbox:root"
+  environment:
+    ALLOWED_HOSTS: netbox.${DOMAIN:?set DOMAIN in services/config.env} netbox # netbox: Homepage's status check
+    CSRF_TRUSTED_ORIGINS: https://netbox.${DOMAIN}
+    SECRET_KEY: ${SECRET_KEY:?missing from .env.tpl}
+    API_TOKEN_PEPPER_1: ${API_TOKEN_PEPPER:?missing from .env.tpl}
+    DB_HOST: netbox-postgres
+    DB_NAME: netbox
+    DB_USER: netbox
+    DB_PASSWORD: ${POSTGRES_PASSWORD:?missing from .env.tpl}
+    REDIS_HOST: redis
+    REDIS_DATABASE: 0 # background jobs
+    REDIS_CACHE_HOST: redis
+    REDIS_CACHE_DATABASE: 1
+    # The local admin, created on the first start only.
+    SKIP_SUPERUSER: "false"
+    SUPERUSER_NAME: admin
+    SUPERUSER_EMAIL: admin@${DOMAIN}
+    SUPERUSER_PASSWORD: ${SUPERUSER_PASSWORD:?missing from .env.tpl}
+    # Sign-in through Pocket ID (services/pocket-id). Leave REMOTE_AUTH_ENABLED off: that
+    # is NetBox's other login method, which trusts whatever username a request claims.
+    REMOTE_AUTH_BACKEND: social_core.backends.open_id_connect.OpenIdConnectAuth
+    SOCIAL_AUTH_OIDC_OIDC_ENDPOINT: https://auth.${DOMAIN}
+    SOCIAL_AUTH_OIDC_KEY: ${OIDC_CLIENT_ID:?missing from .env.tpl}
+    SOCIAL_AUTH_OIDC_SECRET: ${OIDC_CLIENT_SECRET:?missing from .env.tpl}
+    SOCIAL_AUTH_OIDC_SCOPE: openid profile email
+    CENSUS_REPORTING_ENABLED: "false" # on by default: anonymous usage reports to NetBox Labs
+  configs:
+    - source: sign-in-label
+      target: /etc/netbox/config/sign_in_label.py
+  volumes:
+    - media:/opt/netbox/netbox/media # uploaded images and attachments
+    - reports:/opt/netbox/netbox/reports
+    - scripts:/opt/netbox/netbox/scripts
+  labels:
+    stack-hash: ${STACK_HASH:-} # restart when the config changes (see deploy.sh)
+
+services:
+  netbox:
+    <<: *netbox
+    healthcheck:
+      test: /opt/netbox/health.sh
+      start_period: 300s # the first start sets up the database, which takes a few minutes
+      timeout: 3s
+      interval: 15s
+    networks:
+      - default
+      - web
+    depends_on:
+      netbox-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker: # background jobs: scripts, webhooks and NetBox's own housekeeping
+    <<: *netbox
+    command: ["/opt/netbox/venv/bin/python", "/opt/netbox/netbox/manage.py", "rqworker"]
+    healthcheck:
+      test: ps -aux | grep -v grep | grep -q rqworker || exit 1
+      start_period: 20s
+      timeout: 3s
+      interval: 15s
+    depends_on:
+      netbox:
+        condition: service_healthy
+
+  # Not "postgres": the backup stack also reaches Outline's database, which has that name.
+  netbox-postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: netbox
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: netbox
+    volumes:
+      # Postgres 18+ keeps its data in a versioned folder under /var/lib/postgresql.
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "netbox", "-d", "netbox"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"] # queued jobs survive a restart
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+configs:
+  sign-in-label:
+    # NetBox loads every .py file in /etc/netbox/config. This one names the sign-in
+    # button like Outline's ("SIGN_IN_NAME" in config.env) instead of "OpenID Connect".
+    content: |
+      SOCIAL_AUTH_BACKEND_ATTRS = {"oidc": ("${SIGN_IN_NAME:-Pocket ID}", None)}
+
+volumes:
+  media:
+  reports:
+  scripts:
+  postgres:
+  redis:
+
+networks:
+  web:
+    external: true

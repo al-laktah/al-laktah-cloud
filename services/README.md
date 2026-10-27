@@ -112,6 +112,38 @@ The look: `custom.css` recolours Homepage with [Catppuccin](https://catppuccin.c
 3. **VPN-only DNS:** in NetBird, add the zone `cloud.<domain>` with an A record `cloud.<domain>` pointing at the main VM's NetBird IP, distributed to `admins` (see [Behind NetBird](#behind-netbird)). `cloud.<domain>` is the VM's own public record (`dns_name`), so its certificate renews as usual.
 4. **Deploy:** `services/deploy.sh homepage`, then `services/deploy.sh edge` for the new site, and `services/deploy.sh watchtower` for its check.
 
+## NetBox
+
+[NetBox](https://netbox.dev) documents the network: IP addresses and prefixes, VLANs, devices and racks. It runs on the main VM at `netbox.<domain>`, VPN-only like the wiki, with its own Postgres and Redis and a worker for background jobs. You sign in with Pocket ID. A local `admin` account is the way in when Pocket ID is down.
+
+**One-time setup:**
+
+1. **DNS:** add `netbox.<domain>` to `service_dns_names` in `terraform.tfvars`, then `terraform apply`. Expect 1 to add: the DNS record. The site stays VPN-only; the public record is what lets Caddy get its certificate.
+2. **Pocket ID:** add an OIDC client called NetBox, with callback URL `https://netbox.<domain>/oauth/complete/oidc/` (with the trailing slash). Everyone the client accepts gets a NetBox account, so allow only your own user group.
+3. **Secrets, in 1Password**, with the client's ID and secret from step 2. NetBox wants its secret key and API token pepper at least 50 characters long:
+   ```sh
+   op item create --vault=Private --category="Secure Note" --title="NetBox" \
+     "secret_key[password]=$(openssl rand -base64 48)" \
+     "api_token_pepper[password]=$(openssl rand -base64 48)" \
+     "postgres_password[password]=$(openssl rand -hex 24)" \
+     "admin_password[password]=$(openssl rand -base64 24)" \
+     "oidc_client_id[text]=<client ID>" \
+     "oidc_client_secret[password]=<client secret>"
+   ```
+   Keep `$` out of these values: Docker Compose would read it as a variable.
+4. **VPN-only DNS:** in NetBird, add the zone `netbox.<domain>` with an A record `netbox.<domain>` pointing at the main VM's NetBird IP, distributed to `admins` (see [Behind NetBird](#behind-netbird)).
+5. **Deploy, in this order:**
+   ```sh
+   services/deploy.sh netbox    # the first start sets up the database: a few minutes
+   services/deploy.sh edge
+   services/deploy.sh homepage
+   services/deploy.sh backup    # it reaches into NetBox's network and volumes, so after netbox
+   ssh <host> 'cd ~/services/backup && docker compose exec backup backup.sh'
+   services/deploy.sh watchtower
+   ```
+   The backup should end with `== backup finished`. Deploy the watchtower only after it: its daily check expects NetBox's database in the latest backup, and fails until one has it.
+6. **Your account:** open `https://netbox.<domain>` and sign in with Pocket ID. NetBox creates your user, but with no permissions. Sign out, sign in as `admin` with `admin_password` from 1Password, then under **Admin → Users** edit your user and make it a **superuser**. From then on, use Pocket ID.
+
 ## Apps with their own repo (shorti)
 
 shorti builds its images from source, so it is deployed from a checkout of its repo on the VM, not by `deploy.sh`:
@@ -129,9 +161,9 @@ Bump the image tag in its `compose.yaml` and deploy. Outline runs database migra
 ## Backups
 
 Every night at 02:30 UTC, the `backup` stack:
-1. Dumps Outline's Postgres database.
+1. Dumps Outline's and NetBox's Postgres databases.
 2. Copies Pocket ID's and shorti's SQLite databases with SQLite's online backup, which stays consistent while the apps keep writing.
-3. Sends those copies, plus Outline's uploaded files and Pocket ID's uploads, to restic.
+3. Sends those copies, plus the uploaded files of Outline, NetBox and Pocket ID (and NetBox's scripts), to restic.
 
 restic encrypts everything on the VM, uploads only what changed, and keeps **7 daily, 4 weekly and 6 monthly** snapshots. It then checks the repository.
 
@@ -190,6 +222,18 @@ docker compose run --rm -v ~/restore:/restore backup restic restore latest --tar
   ```sh
   docker run --rm --entrypoint cp -v outline_files:/data -v ~/restore/src/outline-files:/from:ro services/backup:local -a /from/. /data/
   ```
+- **NetBox database:**
+  ```sh
+  cd ~/services/netbox && docker compose stop netbox worker
+  docker compose exec -T netbox-postgres psql -q -U netbox -d netbox < ~/restore/staging/netbox.sql
+  docker compose start netbox worker
+  ```
+- **NetBox files** (uploads, reports and scripts):
+  ```sh
+  for v in media reports scripts; do
+    docker run --rm --entrypoint cp -v netbox_$v:/data -v ~/restore/src/netbox-$v:/from:ro services/backup:local -a /from/. /data/
+  done
+  ```
 - **Pocket ID** (users, passkeys, OIDC clients):
   ```sh
   cd ~/services/pocket-id && docker compose stop pocket-id
@@ -213,11 +257,11 @@ Delete `~/restore` when you're done; it holds unencrypted copies of everything.
 
 A separate, Always Free AMD micro VM (`watchtower.tf`) watches the main VM from outside, because a VM that hangs can't report on itself. It runs two containers (`services/watchtower/`):
 
-- **Gatus** checks `wiki`, `cloud`, `auth`, `shorti` and `netbird` over HTTPS and the main VM's SSH port, every minute. The VPN-only sites and SSH are checked across the VCN, at the main VM's private IP (`MAIN_VM_PRIVATE_IP`). It sends an alert to your phone through [ntfy](https://ntfy.sh) after 3 failed checks in a row, or when a certificate has less than 10 days left. It sends another when things recover.
+- **Gatus** checks `wiki`, `cloud`, `netbox`, `auth`, `shorti` and `netbird` over HTTPS and the main VM's SSH port, every minute. The VPN-only sites and SSH are checked across the VCN, at the main VM's private IP (`MAIN_VM_PRIVATE_IP`). It sends an alert to your phone through [ntfy](https://ntfy.sh) after 3 failed checks in a row, or when a certificate has less than 10 days left. It sends another when things recover.
 - **backup-check** verifies the backups of both VMs every day at 06:00 UTC, first the main VM's, then the NetBird VM's:
   1. The latest backup is less than 26 hours old.
   2. The repository passes `restic check`, which also downloads and verifies a different quarter of all backup data each day (all of it every 4 days).
-  3. The databases restore: Pocket ID's and shorti's SQLite files pass an integrity check, and Outline's dump loads into a throwaway Postgres. For NetBird, every SQLite database passes an integrity check, and the store still holds your account.
+  3. The databases restore: Pocket ID's and shorti's SQLite files pass an integrity check, and Outline's and NetBox's dumps load into a throwaway Postgres (NetBox's must hold at least one user). For NetBird, every SQLite database passes an integrity check, and the store still holds your account.
 
   It reports each result to Gatus, as `nightly backup` and `netbird backup`. Gatus alerts on a failure, and also if no result arrives for 26 hours.
 

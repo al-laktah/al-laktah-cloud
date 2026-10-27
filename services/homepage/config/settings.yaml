@@ -17,7 +17,7 @@ hideVersion: true
 layout:
   Apps:
     style: row
-    columns: 3
+    columns: 4
   Access:
     style: row
     columns: 3

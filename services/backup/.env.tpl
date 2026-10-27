@@ -5,3 +5,4 @@
 # Without the restic password the backups can't be decrypted, so keep it safe.
 RESTIC_PASSWORD={{ op://Private/Backups/restic_password }}
 POSTGRES_PASSWORD={{ op://Private/Outline/postgres_password }}
+NETBOX_POSTGRES_PASSWORD={{ op://Private/NetBox/postgres_password }}

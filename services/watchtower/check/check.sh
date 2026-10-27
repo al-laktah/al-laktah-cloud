@@ -94,9 +94,16 @@ main)
   pg -c 'CREATE ROLE outline' -c 'CREATE DATABASE outline OWNER outline'
   pg --dbname=outline --file=/restore/staging/outline.sql >/dev/null
   documents=$(pg --dbname=outline --tuples-only --no-align -c 'SELECT count(*) FROM documents')
+
+  step="the NetBox database dump did not load into Postgres"
+  pg -c 'CREATE ROLE netbox' -c 'CREATE DATABASE netbox OWNER netbox'
+  pg --dbname=netbox --file=/restore/staging/netbox.sql >/dev/null
+  step="the NetBox database has no users" # at least the admin, created on the first start
+  [ "$(pg --dbname=netbox --tuples-only --no-align -c 'SELECT count(*) FROM users_user')" -gt 0 ]
+  devices=$(pg --dbname=netbox --tuples-only --no-align -c 'SELECT count(*) FROM dcim_device')
   su-exec postgres pg_ctl --pgdata=/tmp/pg --silent --wait stop
 
-  summary="snapshot ${age_hours}h old, $documents Outline documents, data part $part/4 verified"
+  summary="snapshot ${age_hours}h old, $documents Outline documents, $devices NetBox devices, data part $part/4 verified"
   ;;
 netbird)
   # store.db must be there; every other database that was backed up must be healthy too.

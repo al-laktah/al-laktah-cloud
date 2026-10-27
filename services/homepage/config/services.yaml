@@ -19,6 +19,11 @@
         href: https://shorti.{{HOMEPAGE_VAR_DOMAIN}}
         description: shorti, a link shortener
         siteMonitor: http://shorti:80
+    - Network:
+        icon: mdi-ip-network
+        href: https://netbox.{{HOMEPAGE_VAR_DOMAIN}}
+        description: NetBox, IP addresses and devices
+        siteMonitor: http://netbox:8080/login/
 
 - Access:
     - Sign-in:

@@ -1,0 +1,5 @@
+# NetBox (services/netbox): VPN-only, like the wiki.
+netbox.{$DOMAIN} {
+	import vpn_only
+	reverse_proxy netbox:8080
+}

@@ -35,6 +35,10 @@ chmod 1777 /staging # writable for the SQLite file owners, like /tmp
 echo "== Outline database"
 pg_dump --clean --if-exists --no-owner --file /staging/outline.sql # PG* variables come from compose.yaml
 
+echo "== NetBox database"
+PGHOST=$NETBOX_PGHOST PGUSER=netbox PGDATABASE=netbox PGPASSWORD=$NETBOX_PGPASSWORD \
+  pg_dump --clean --if-exists --no-owner --file /staging/netbox.sql
+
 echo "== SQLite databases"
 sqlite_backup /src/pocket-id/pocket-id.db /staging/pocket-id.db
 sqlite_backup /src/shorti/andy.db /staging/shorti.db
@@ -46,7 +50,7 @@ echo "== restic"
 restic backup --tag nightly \
   --exclude '/src/pocket-id/pocket-id.db*' \
   --exclude '/src/shorti/andy.db*' \
-  /staging /src/outline-files /src/pocket-id /src/shorti
+  /staging /src/outline-files /src/pocket-id /src/shorti /src/netbox-media /src/netbox-reports /src/netbox-scripts
 restic forget --tag nightly --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune
 restic check
 
