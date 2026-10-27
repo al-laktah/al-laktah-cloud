@@ -325,7 +325,7 @@ Sign-in uses NetBird's built-in identity provider, and Pocket ID can be added as
 
 ### Behind NetBird
 
-Only `auth` (Pocket ID) and `netbird` itself face the internet. SSH on every VM, the wiki and shorti answer only over NetBird: the VMs join NetBird as peers, and NetBird's DNS sends your devices to the main VM's NetBird address for the private sites. Do it in this order, so there's always a way in:
+Only `auth` (Pocket ID), `netbird` itself and shorti's short links face the internet. SSH on every VM, the wiki, the start page and creating short links answer only over NetBird (open link shorteners get used to hide phishing, which gets the whole domain blocklisted). The VMs join NetBird as peers, and NetBird's DNS sends your devices to the main VM's NetBird address for the private sites. Do it in this order, so there's always a way in:
 
 1. **The firewalls:** `terraform apply` with `ssh_allowed_cidr = "0.0.0.0/0"` still in `terraform.tfvars`. It creates the Bastion, moves the web ports to network security groups and opens WireGuard's port; SSH stays open. Then test the Bastion once (see the main README's *Break-glass access*), so you know it works before you need it.
 2. **Groups and a setup key**, in the NetBird dashboard:
@@ -338,7 +338,7 @@ Only `auth` (Pocket ID) and `netbird` itself face the internet. SSH on every VM,
    It ends by printing the VM's NetBird IP and name (`FQDN`).
 4. **SSH over NetBird:** in `~/.ssh/config`, point each host at its NetBird name, e.g. `HostName arm-vm-01.netbird.selfhosted`, and check that `ssh <host>` and `services/deploy.sh <stack>` still work.
 5. **Access policy:** under **Access Control → Policies**, add `admins` → `servers` (all protocols), then disable the `Default` policy, which lets every peer reach every other. Check SSH again.
-6. **The private sites:** under **DNS → Zones**, add one zone per private name, distributed to `admins`: zone `wiki.<domain>` with an A record `wiki.<domain>`, and the same for `shorti.<domain>` and `cloud.<domain>`, all pointing at the main VM's NetBird IP. One zone for the whole `<domain>` would route every name under it (`auth` too) through NetBird's DNS; one zone per name keeps NetBird's DNS out of everything else. Then set `MAIN_VM_PRIVATE_IP` in `config.env` (from `terraform output -raw services_config`) and deploy `edge` and `watchtower`. Check that the wiki loads with NetBird on, and shows *Only available over the VPN* with it off.
+6. **The private sites:** under **DNS → Zones**, add one zone per private name, distributed to `admins`: zone `wiki.<domain>` with an A record `wiki.<domain>`, and the same for `shorti.<domain>` and `cloud.<domain>`, all pointing at the main VM's NetBird IP. (shorti is public, but its zone is what lets your devices create links: without it they reach shorti through the public IP, and Caddy refuses.) One zone for the whole `<domain>` would route every name under it (`auth` too) through NetBird's DNS; one zone per name keeps NetBird's DNS out of everything else. Then set `MAIN_VM_PRIVATE_IP` in `config.env` (from `terraform output -raw services_config`) and deploy `edge` and `watchtower`. Check that the wiki loads with NetBird on, and shows *Only available over the VPN* with it off.
 7. **Close SSH:** delete the `ssh_allowed_cidr` line from `terraform.tfvars`, then `terraform apply` again. SSH now answers only over NetBird, the Bastion and the VCN.
 
 ### Day to day

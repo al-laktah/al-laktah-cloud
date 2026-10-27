@@ -1,6 +1,13 @@
 # shorti is deployed from its own repo (github.com/al-laktah/shorti); its frontend
 # joins the "web" network as "shorti".
+# Public, so shared links work for everyone, except creating links: open shorteners
+# get used to hide spam and phishing, which gets the whole domain blocklisted.
 shorti.{$DOMAIN} {
-	import vpn_only # remove to make short links work for everyone again
-	reverse_proxy shorti:80
+	handle /api/shortener* {
+		import vpn_only
+		reverse_proxy shorti:80
+	}
+	handle {
+		reverse_proxy shorti:80
+	}
 }

@@ -3,7 +3,7 @@
 [![Terraform](https://github.com/al-laktah/al-laktah-cloud/actions/workflows/terraform.yml/badge.svg)](https://github.com/al-laktah/al-laktah-cloud/actions/workflows/terraform.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-My personal cloud on Oracle Cloud's **Always Free** tier, at no cost. Terraform builds the infrastructure: an Arm VM, its network, Cloudflare DNS records and remote state. The services on the VM, an Outline wiki, passkey sign-in and a start page, run as Docker Compose stacks behind Caddy and are backed up every night. A second, tiny VM watches it all from outside, and a third runs a NetBird VPN server. Only sign-in and the VPN itself face the internet: SSH, the wiki and everything else answer only over the VPN.
+My personal cloud on Oracle Cloud's **Always Free** tier, at no cost. Terraform builds the infrastructure: an Arm VM, its network, Cloudflare DNS records and remote state. The services on the VM, an Outline wiki, passkey sign-in and a start page, run as Docker Compose stacks behind Caddy and are backed up every night. A second, tiny VM watches it all from outside, and a third runs a NetBird VPN server. Only sign-in, the VPN itself and the links of a URL shortener face the internet: SSH, the wiki and everything else answer only over the VPN.
 
 ## Architecture
 
@@ -88,7 +88,7 @@ All of it fits inside the Always Free allowance: the whole A1 allowance (2 OCPUs
 - **Guard rails as code.** Variable validation rejects anything beyond the free tier and catches malformed IDs before any API call is made.
 - **Remote state done properly.** The bucket is bootstrapped separately (the chicken-and-egg problem), versioned for recovery, locked against concurrent runs and protected with `prevent_destroy`.
 - **Working around real platform limits.** OCI's API rejects FIDO2 (`sk-`) SSH keys, so keys go in via cloud-init `user_data`. `ignore_changes` stops new image releases from forcing a rebuild.
-- **Almost nothing exposed.** Only sign-in (Pocket ID) and the VPN server face the internet. SSH and the private sites answer only to NetBird's addresses, enforced twice: by OCI's firewalls for SSH, and by Caddy for the sites. A switch in `terraform.tfvars` (`ssh_allowed_cidr`) opened SSH during the migration, and an OCI Bastion is the way in that doesn't depend on the VPN.
+- **Almost nothing exposed.** Only sign-in (Pocket ID), the VPN server and shorti's short links face the internet; creating links stays private, so the shortener can't be used to spread spam. SSH and the private sites answer only to NetBird's addresses, enforced twice: by OCI's firewalls for SSH, and by Caddy for the sites. A switch in `terraform.tfvars` (`ssh_allowed_cidr`) opened SSH during the migration, and an OCI Bastion is the way in that doesn't depend on the VPN.
 - **No credentials on the server.** The VM writes its backups as an OCI *instance principal*: a dynamic group plus a policy that limits it to one bucket. Nothing on the VM could leak access to anything else.
 - **Backups you can restore from.** Consistent database copies (`pg_dump`, and SQLite's online backup), encrypted and deduplicated by restic, with a retention schedule, nightly integrity checks and a documented restore procedure.
 - **Verification from outside.** A separate VM, with read-only access, proves daily that the backups are fresh, intact and restorable, and monitors the sites. Its own silence is caught too: by a heartbeat in Gatus, and by an external dead-man's switch.
