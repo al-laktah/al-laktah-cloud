@@ -146,7 +146,7 @@ The look: `custom.css` recolours Homepage with [Catppuccin](https://catppuccin.c
 
 ## Umami (trial)
 
-[Umami](https://umami.is) is privacy-friendly web analytics: page views, visitors and referrers, without cookies. It's on trial as the wiki's analytics, through Outline's built-in Umami integration, at `umami.<domain>`. Umami has its own accounts and no Pocket ID sign-in, so it's VPN-only. That still works for tracking: the wiki's readers are on the VPN, so their browsers reach the tracker. Being a trial, it isn't in the backups, Gatus or Homepage yet.
+[Umami](https://umami.is) is privacy-friendly web analytics: page views, visitors and referrers, without cookies. It's on trial as the wiki's analytics, through Outline's built-in Umami integration, at `umami.<domain>`. Umami has its own accounts and no Pocket ID sign-in, so its dashboard and API are VPN-only. Only the two addresses a tracked site's visitors need are public: the tracker, `/script.js`, and the endpoint that receives page views, `/api/send`. That way it can also count visits to public websites. Being a trial, it isn't in the backups, Gatus or Homepage yet.
 
 **Setup:**
 
@@ -165,6 +165,12 @@ The look: `custom.css` recolours Homepage with [Catppuccin](https://catppuccin.c
 7. **Outline:** under **Settings → Integrations → Umami**, set the instance URL to `https://umami.<domain>/`, the script name to `script.js`, and the website ID from step 6. Outline adds Umami's address to its script allow-list by itself.
 
 Browse the wiki, then watch Umami's **Realtime** view. Ad blockers may block the tracker; Umami's `TRACKER_SCRIPT_NAME` setting serves it under another name if that gets in the way.
+
+**A public website:** add it under **Settings → Websites**, then put Umami's tag in the site's pages, with its website ID:
+```html
+<script defer src="https://umami.<domain>/script.js" data-website-id="<website ID>" data-domains="<the site's domain>" data-do-not-track="true"></script>
+```
+`data-domains` makes the tracker ignore copies of the site on other domains, and `data-do-not-track` respects visitors who ask not to be tracked. Umami sets no cookies and doesn't store IP addresses.
 
 **Ending the trial:** `ssh <host> 'cd ~/services/umami && docker compose down -v'` deletes it and its data. Then remove its integration in Outline, its NetBird zone, `services/umami/`, `edge/config/sites/umami.caddy` (deploy `edge`) and its name in `service_dns_names` (apply).
 
@@ -416,7 +422,7 @@ Sign-in uses NetBird's built-in identity provider, and Pocket ID can be added as
 
 ### Behind NetBird
 
-Only `auth` (Pocket ID), `netbird` itself and shorti's short links face the internet. SSH on every VM, the wiki, the start page and creating short links answer only over NetBird (open link shorteners get used to hide phishing, which gets the whole domain blocklisted). The VMs join NetBird as peers, and NetBird's DNS sends your devices to the main VM's NetBird address for the private sites. Do it in this order, so there's always a way in:
+Only `auth` (Pocket ID), `netbird` itself, shorti's short links and Umami's tracker face the internet. SSH on every VM, the wiki, the start page and creating short links answer only over NetBird (open link shorteners get used to hide phishing, which gets the whole domain blocklisted). The VMs join NetBird as peers, and NetBird's DNS sends your devices to the main VM's NetBird address for the private sites. Do it in this order, so there's always a way in:
 
 1. **The firewalls:** `terraform apply` with `ssh_allowed_cidr = "0.0.0.0/0"` still in `terraform.tfvars`. It creates the Bastion, moves the web ports to network security groups and opens WireGuard's port; SSH stays open. Then test the Bastion once (see the main README's *Break-glass access*), so you know it works before you need it.
 2. **Groups and a setup key**, in the NetBird dashboard:

@@ -1,6 +1,13 @@
-# Umami (services/umami): VPN-only. The wiki's readers are on the VPN too, so their
-# browsers can still load the tracker and send it their page views.
+# Umami (services/umami). Its tracker script and the endpoint that receives page views
+# are public, so public websites can use it; the dashboard and the rest of its API stay
+# VPN-only. (The wiki's readers are on the VPN either way.)
 umami.{$DOMAIN} {
-	import vpn_only
-	reverse_proxy umami:3000
+	@tracker path /script.js /api/send
+	handle @tracker {
+		reverse_proxy umami:3000
+	}
+	handle {
+		import vpn_only
+		reverse_proxy umami:3000
+	}
 }
