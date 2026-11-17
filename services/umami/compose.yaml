@@ -1,0 +1,51 @@
+# Umami web analytics, on trial with Outline (Settings → Integrations → Umami). Umami
+# keeps its own accounts (it has no Pocket ID sign-in), so it stays VPN-only. Only Umami
+# joins the "web" network; its Postgres stays on this stack's private default network.
+name: umami
+
+services:
+  umami:
+    image: docker.io/umamisoftware/umami:3.5.0
+    restart: unless-stopped
+    init: true
+    environment:
+      DATABASE_URL: postgresql://umami:${POSTGRES_PASSWORD:?missing from .env.tpl}@umami-postgres:5432/umami
+      APP_SECRET: ${APP_SECRET:?missing from .env.tpl}
+      TWO_FACTOR_ENCRYPTION_KEY: ${TWO_FACTOR_KEY:?missing from .env.tpl} # lets you turn on two-factor sign-in
+      DISABLE_TELEMETRY: 1 # on by default: anonymous usage reports to Umami
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/heartbeat >/dev/null"]
+      start_period: 60s # the first start creates the database tables
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - default
+      - web
+    depends_on:
+      umami-postgres:
+        condition: service_healthy
+
+  # Not "postgres", so the backup stack could reach it next to Outline's, which has that name.
+  umami-postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: umami
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: umami
+    volumes:
+      # Postgres 18+ keeps its data in a versioned folder under /var/lib/postgresql.
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "umami", "-d", "umami"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres:
+
+networks:
+  web:
+    external: true

@@ -144,6 +144,30 @@ The look: `custom.css` recolours Homepage with [Catppuccin](https://catppuccin.c
    The backup should end with `== backup finished`. Deploy the watchtower only after it: its daily check expects NetBox's database in the latest backup, and fails until one has it.
 6. **Your account:** open `https://netbox.<domain>` and sign in with Pocket ID. NetBox creates your user, but with no permissions. Sign out, sign in as `admin` with `admin_password` from 1Password, then under **Admin → Users** edit your user and make it a **superuser**. From then on, use Pocket ID.
 
+## Umami (trial)
+
+[Umami](https://umami.is) is privacy-friendly web analytics: page views, visitors and referrers, without cookies. It's on trial as the wiki's analytics, through Outline's built-in Umami integration, at `umami.<domain>`. Umami has its own accounts and no Pocket ID sign-in, so it's VPN-only. That still works for tracking: the wiki's readers are on the VPN, so their browsers reach the tracker. Being a trial, it isn't in the backups, Gatus or Homepage yet.
+
+**Setup:**
+
+1. **DNS:** add `umami.<domain>` to `service_dns_names`, then `terraform apply`. Expect 1 to add.
+2. **Secrets, in 1Password:**
+   ```sh
+   op item create --vault=Homelab --category="Secure Note" --title="Umami" \
+     "app_secret[password]=$(openssl rand -hex 32)" \
+     "two_factor_key[password]=$(openssl rand -hex 32)" \
+     "postgres_password[password]=$(openssl rand -hex 24)"
+   ```
+3. **VPN-only DNS:** in NetBird, add the zone `umami.<domain>` with an A record `umami.<domain>` pointing at the main VM's NetBird IP, distributed to the same groups as the wiki's zone (see [Behind NetBird](#behind-netbird)).
+4. **Deploy:** `services/deploy.sh umami`, then `services/deploy.sh edge`.
+5. **Change the default login right away.** Umami creates the account `admin` with the password `umami`, and everyone on the VPN can reach the sign-in page. Sign in at `https://umami.<domain>`, then under **Settings → Profile** set a new password (store it in the `Umami` item) and turn on two-factor sign-in.
+6. **The website:** under **Settings → Websites → Add website**, add `wiki.<domain>` and copy its **Website ID**.
+7. **Outline:** under **Settings → Integrations → Umami**, set the instance URL to `https://umami.<domain>/`, the script name to `script.js`, and the website ID from step 6. Outline adds Umami's address to its script allow-list by itself.
+
+Browse the wiki, then watch Umami's **Realtime** view. Ad blockers may block the tracker; Umami's `TRACKER_SCRIPT_NAME` setting serves it under another name if that gets in the way.
+
+**Ending the trial:** `ssh <host> 'cd ~/services/umami && docker compose down -v'` deletes it and its data. Then remove its integration in Outline, its NetBird zone, `services/umami/`, `edge/config/sites/umami.caddy` (deploy `edge`) and its name in `service_dns_names` (apply).
+
 ## Apps with their own repo (shorti)
 
 shorti builds its images from source, so it is deployed from a checkout of its repo on the VM, not by `deploy.sh`:
