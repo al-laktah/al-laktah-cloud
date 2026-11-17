@@ -4,7 +4,7 @@ name: outline
 
 services:
   outline:
-    image: docker.getoutline.com/outlinewiki/outline:1.12.0
+    image: docker.getoutline.com/outlinewiki/outline:1.13.0
     restart: unless-stopped
     environment:
       URL: https://wiki.${DOMAIN:?set DOMAIN in services/config.env}
