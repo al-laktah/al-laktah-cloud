@@ -168,6 +168,29 @@ Browse the wiki, then watch Umami's **Realtime** view. Ad blockers may block the
 
 **Ending the trial:** `ssh <host> 'cd ~/services/umami && docker compose down -v'` deletes it and its data. Then remove its integration in Outline, its NetBird zone, `services/umami/`, `edge/config/sites/umami.caddy` (deploy `edge`) and its name in `service_dns_names` (apply).
 
+## Matomo (trial)
+
+[Matomo](https://matomo.org) is the other analytics trial for the wiki, next to Umami: fuller reports and goals, but heavier (PHP and MariaDB, since Matomo supports only MySQL and MariaDB). It's at `matomo.<domain>`, VPN-only like Umami, and also kept out of the backups, Gatus and Homepage for now.
+
+Outline's Matomo integration records one page view per page load. Outline is a single-page app, so moving between documents isn't a new page load, and Matomo will count far fewer page views than Umami, whose tracker follows those in-app moves. Keep that in mind when comparing them.
+
+**Setup:**
+
+1. **DNS:** add `matomo.<domain>` to `service_dns_names`, then `terraform apply` (through `op run`). Expect 1 to add.
+2. **Secret, in 1Password:**
+   ```sh
+   op item create --vault=Homelab --category="Secure Note" --title="Matomo" \
+     "db_password[password]=$(openssl rand -hex 24)"
+   ```
+3. **VPN-only DNS:** in NetBird, add the zone `matomo.<domain>` with an A record `matomo.<domain>` pointing at the main VM's NetBird IP, distributed to the same groups as the wiki's zone.
+4. **Deploy:** `services/deploy.sh matomo`, then `services/deploy.sh edge`.
+5. **Run the installer right away.** Until it's finished, anyone who reaches `https://matomo.<domain>` can complete it and become the superuser. Open it, click through the system check, and accept the prefilled database settings. Create your superuser (store the password in the `Matomo` item), then add the first website: name `Wiki`, URL `https://wiki.<domain>`. Note its **site ID** (1 for the first site).
+6. **Outline:** under **Settings → Integrations → Matomo**, set the instance URL to `https://matomo.<domain>/` and the site ID from step 5.
+
+Browse the wiki, then check Matomo's **Visitors → Visits Log**. Like Umami's, Matomo's tracker is on uBlock Origin's lists, so trust the wiki in your blocker.
+
+**Ending the trial:** `ssh <host> 'cd ~/services/matomo && docker compose down -v'`, then remove its integration in Outline, its NetBird zone, `services/matomo/`, `edge/config/sites/matomo.caddy` (deploy `edge`) and its name in `service_dns_names` (apply).
+
 ## Apps with their own repo (shorti)
 
 shorti builds its images from source, so it is deployed from a checkout of its repo on the VM, not by `deploy.sh`:

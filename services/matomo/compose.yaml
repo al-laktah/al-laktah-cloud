@@ -1,0 +1,71 @@
+# Matomo web analytics, on trial with Outline next to Umami (Settings → Integrations →
+# Matomo). It keeps its own accounts, so it stays VPN-only. Matomo supports only MySQL
+# and MariaDB, so it brings its own MariaDB, on this stack's private default network.
+name: matomo
+
+services:
+  matomo:
+    image: matomo:5.14.2-apache
+    restart: unless-stopped
+    environment:
+      # Prefill the installer's database step.
+      MATOMO_DATABASE_HOST: matomo-db
+      MATOMO_DATABASE_USERNAME: matomo
+      MATOMO_DATABASE_PASSWORD: ${DB_PASSWORD:?missing from .env.tpl}
+      MATOMO_DATABASE_DBNAME: matomo
+      MATOMO_DATABASE_TABLES_PREFIX: matomo_
+    # Matomo reads config/common.config.ini.php next to the config its installer writes.
+    # It lives in the data volume, so copy it in on every start. (A file mounted there
+    # directly would break the image's first-start `chown -R`.)
+    command:
+      - sh
+      - -c
+      - cp /etc/matomo/common.config.ini.php /var/www/html/config/ && exec apache2-foreground
+    configs:
+      - source: behind-caddy
+        target: /etc/matomo/common.config.ini.php
+    labels:
+      stack-hash: ${STACK_HASH:-} # restart when the config changes (see deploy.sh)
+    volumes:
+      # Matomo's code and config. The image copies its code in on the first start only,
+      # so a newer image doesn't upgrade an existing install by itself.
+      - html:/var/www/html
+    networks:
+      - default
+      - web
+    depends_on:
+      matomo-db:
+        condition: service_healthy
+
+  matomo-db:
+    image: mariadb:11.8.9
+    restart: unless-stopped
+    command: ["--max-allowed-packet=64MB"] # Matomo's recommended minimum
+    environment:
+      MARIADB_DATABASE: matomo
+      MARIADB_USER: matomo
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+      MARIADB_RANDOM_ROOT_PASSWORD: "1"
+    volumes:
+      - mariadb:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+configs:
+  behind-caddy:
+    # Caddy terminates HTTPS and sets X-Forwarded-For to the visitor's address alone.
+    content: |
+      [General]
+      assume_secure_protocol = 1
+      proxy_client_headers[] = HTTP_X_FORWARDED_FOR
+
+volumes:
+  html:
+  mariadb:
+
+networks:
+  web:
+    external: true

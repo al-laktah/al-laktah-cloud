@@ -1,0 +1,6 @@
+# Matomo (services/matomo): VPN-only. The wiki's readers are on the VPN too, so their
+# browsers can still load the tracker and send it their page views.
+matomo.{$DOMAIN} {
+	import vpn_only
+	reverse_proxy matomo:80
+}
