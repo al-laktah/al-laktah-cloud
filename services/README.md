@@ -41,9 +41,9 @@ The script syncs the stack to `~/services/<service>`, writes its `.env` and runs
 1. **DNS.** Make sure `auth.<domain>` and `wiki.<domain>` are in `service_dns_names`, then `terraform apply`. Caddy can only get a certificate once the name resolves.
 2. **Secrets.** Create them in 1Password. The values are generated on the spot and never shown:
    ```sh
-   op item create --vault=Private --category="Secure Note" --title="Pocket ID" \
+   op item create --vault=Homelab --category="Secure Note" --title="Pocket ID" \
      "encryption_key[password]=$(openssl rand -base64 32)"
-   op item create --vault=Private --category="Secure Note" --title="Outline" \
+   op item create --vault=Homelab --category="Secure Note" --title="Outline" \
      "secret_key[password]=$(openssl rand -hex 32)" \
      "utils_secret[password]=$(openssl rand -hex 32)" \
      "postgres_password[password]=$(openssl rand -hex 24)"
@@ -56,7 +56,7 @@ The script syncs the stack to `~/services/<service>`, writes its `.env` and runs
    Open `https://auth.<domain>/setup`, create your admin account and add your YubiKey as a passkey. Add a **second passkey** too (e.g. one stored in 1Password), so losing the YubiKey doesn't lock you out.
 4. **The Outline OIDC client.** In Pocket ID, go to **OIDC Clients → Add**. Name it `Outline`, set the callback URL to `https://wiki.<domain>/auth/oidc.callback`, and the logout callback URL to exactly `https://wiki.<domain>` (no trailing slash). Without that, signing out leaves you on Pocket ID's own logout page instead of back at Outline, which in the desktop app looks like nothing happened. The client secret is shown **only once**, so store it right away:
    ```sh
-   op item edit Outline --vault=Private \
+   op item edit Outline --vault=Homelab \
      "oidc_client_id[text]=<client id>" "oidc_client_secret[password]=<client secret>"
    ```
 5. **Outline.**
@@ -104,7 +104,7 @@ The look: `custom.css` recolours Homepage with [Catppuccin](https://catppuccin.c
 1. **Pocket ID:** add an OIDC client called Homepage, with callback URL `https://cloud.<domain>/api/auth/callback/homepage-oidc`. Homepage lets in anyone Pocket ID accepts, so allow only your own user group on the client.
 2. **Secrets, in 1Password**, with the client's ID and secret from step 1:
    ```sh
-   op item create --vault=Private --category="Secure Note" --title="Homepage" \
+   op item create --vault=Homelab --category="Secure Note" --title="Homepage" \
      "auth_secret[password]=$(openssl rand -base64 32)" \
      "oidc_client_id[text]=<client ID>" \
      "oidc_client_secret[password]=<client secret>"
@@ -122,7 +122,7 @@ The look: `custom.css` recolours Homepage with [Catppuccin](https://catppuccin.c
 2. **Pocket ID:** add an OIDC client called NetBox, with callback URL `https://netbox.<domain>/oauth/complete/oidc/` (with the trailing slash). Everyone the client accepts gets a NetBox account, so allow only your own user group.
 3. **Secrets, in 1Password**, with the client's ID and secret from step 2. NetBox wants its secret key and API token pepper at least 50 characters long:
    ```sh
-   op item create --vault=Private --category="Secure Note" --title="NetBox" \
+   op item create --vault=Homelab --category="Secure Note" --title="NetBox" \
      "secret_key[password]=$(openssl rand -base64 48)" \
      "api_token_pepper[password]=$(openssl rand -base64 48)" \
      "postgres_password[password]=$(openssl rand -hex 24)" \
@@ -175,7 +175,7 @@ The backups go to the `backups` bucket that `bootstrap/` creates. Because that b
 2. **The VM's permission:** `terraform apply` in the repo root. Expect 2 to add: the dynamic group and the policy. Policies can take a minute to take effect.
 3. **The restic password, in 1Password:**
    ```sh
-   op item create --vault=Private --category="Secure Note" --title="Backups" \
+   op item create --vault=Homelab --category="Secure Note" --title="Backups" \
      "restic_password[password]=$(openssl rand -base64 32)"
    ```
 4. **The settings:** copy the output of `terraform output -raw services_config` into `services/config.env`.
@@ -284,13 +284,13 @@ The watchtower can only **read** the backups buckets (`backup.tf`). Every restic
    ```
 4. **Secrets, in 1Password.** The ntfy topic acts as a password: anyone who knows it can read your alerts.
    ```sh
-   op item create --vault=Private --category="Secure Note" --title="Watchtower" \
+   op item create --vault=Homelab --category="Secure Note" --title="Watchtower" \
      "ntfy_topic[password]=alerts-$(openssl rand -hex 16)" \
      "push_token[password]=$(openssl rand -hex 32)"
    ```
-5. **Alerts on your phone:** install the ntfy app and subscribe to the topic (`op read "op://Private/Watchtower/ntfy_topic"`). Send a test message to make sure it arrives:
+5. **Alerts on your phone:** install the ntfy app and subscribe to the topic (`op read "op://Homelab/Watchtower/ntfy_topic"`). Send a test message to make sure it arrives:
    ```sh
-   curl -d "Hello from the watchtower" "ntfy.sh/$(op read 'op://Private/Watchtower/ntfy_topic')"
+   curl -d "Hello from the watchtower" "ntfy.sh/$(op read 'op://Homelab/Watchtower/ntfy_topic')"
    ```
 6. **Deploy, then run the first backup check right away:**
    ```sh
@@ -344,7 +344,7 @@ Sign-in uses NetBird's built-in identity provider, and Pocket ID can be added as
    ```
 4. **Secrets, in 1Password.** Never change `store_encryption_key` afterwards: it encrypts parts of the database, so a backup can't be read without the key it was made with.
    ```sh
-   op item create --vault=Private --category="Secure Note" --title="NetBird" \
+   op item create --vault=Homelab --category="Secure Note" --title="NetBird" \
      "auth_secret[password]=$(openssl rand -hex 32)" \
      "session_cookie_key[password]=$(openssl rand -base64 32)" \
      "store_encryption_key[password]=$(openssl rand -base64 32)"

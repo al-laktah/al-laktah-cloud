@@ -3,6 +3,6 @@
 # Commit this file; never commit a rendered .env.
 #
 # Without the restic password the backups can't be decrypted, so keep it safe.
-RESTIC_PASSWORD={{ op://Private/Backups/restic_password }}
-POSTGRES_PASSWORD={{ op://Private/Outline/postgres_password }}
-NETBOX_POSTGRES_PASSWORD={{ op://Private/NetBox/postgres_password }}
+RESTIC_PASSWORD={{ op://Homelab/Backups/restic_password }}
+POSTGRES_PASSWORD={{ op://Homelab/Outline/postgres_password }}
+NETBOX_POSTGRES_PASSWORD={{ op://Homelab/NetBox/postgres_password }}
