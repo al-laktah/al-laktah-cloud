@@ -1,6 +1,7 @@
-# Umami web analytics, on trial with Outline (Settings → Integrations → Umami). Umami
-# keeps its own accounts (it has no Pocket ID sign-in), so it stays VPN-only. Only Umami
-# joins the "web" network; its Postgres stays on this stack's private default network.
+# Umami web analytics, for the wiki (Outline's Settings → Integrations → Umami) and public
+# websites. Umami keeps its own accounts (it has no Pocket ID sign-in), so only its tracker
+# is public (see edge/config/sites/umami.caddy). Only Umami joins the "web" network; its
+# Postgres stays on this stack's private default network.
 name: umami
 
 services:
@@ -26,7 +27,7 @@ services:
       umami-postgres:
         condition: service_healthy
 
-  # Not "postgres", so the backup stack could reach it next to Outline's, which has that name.
+  # Not "postgres": the backup stack also reaches Outline's database, which has that name.
   umami-postgres:
     image: postgres:18-alpine
     restart: unless-stopped

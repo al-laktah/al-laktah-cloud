@@ -27,9 +27,11 @@ services:
       PGUSER: outline
       PGDATABASE: outline
       PGPASSWORD: ${POSTGRES_PASSWORD:?missing from .env.tpl}
-      # ...and to NetBox's over its stack's network (backup.sh passes these to pg_dump)
+      # ...and to NetBox's and Umami's over theirs (backup.sh passes these to pg_dump)
       NETBOX_PGHOST: netbox-postgres
       NETBOX_PGPASSWORD: ${NETBOX_POSTGRES_PASSWORD:?missing from .env.tpl}
+      UMAMI_PGHOST: umami-postgres
+      UMAMI_PGPASSWORD: ${UMAMI_POSTGRES_PASSWORD:?missing from .env.tpl}
     volumes:
       - cache:/cache
       # The other stacks' data. Read-write only where SQLite needs its lock files.
@@ -42,6 +44,7 @@ services:
     networks:
       - outline
       - netbox
+      - umami
 
 volumes:
   cache:
@@ -71,3 +74,6 @@ networks:
   netbox:
     external: true
     name: netbox_default
+  umami:
+    external: true
+    name: umami_default

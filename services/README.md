@@ -144,9 +144,9 @@ The look: `custom.css` recolours Homepage with [Catppuccin](https://catppuccin.c
    The backup should end with `== backup finished`. Deploy the watchtower only after it: its daily check expects NetBox's database in the latest backup, and fails until one has it.
 6. **Your account:** open `https://netbox.<domain>` and sign in with Pocket ID. NetBox creates your user, but with no permissions. Sign out, sign in as `admin` with `admin_password` from 1Password, then under **Admin → Users** edit your user and make it a **superuser**. From then on, use Pocket ID.
 
-## Umami (trial)
+## Umami
 
-[Umami](https://umami.is) is privacy-friendly web analytics: page views, visitors and referrers, without cookies. It's on trial as the wiki's analytics, through Outline's built-in Umami integration, at `umami.<domain>`. Umami has its own accounts and no Pocket ID sign-in, so its dashboard and API are VPN-only. Only the two addresses a tracked site's visitors need are public: the tracker, `/script.js`, and the endpoint that receives page views, `/api/send`. That way it can also count visits to public websites. Being a trial, it isn't in the backups, Gatus or Homepage yet.
+[Umami](https://umami.is) is privacy-friendly web analytics: page views, visitors and referrers, without cookies. It counts visits to the wiki, through Outline's built-in Umami integration, and to public websites, at `umami.<domain>`. Umami has its own accounts and no Pocket ID sign-in, so its dashboard and API are VPN-only. Only the two addresses a tracked site's visitors need are public: the tracker, `/script.js`, and the endpoint that receives page views, `/api/send`. Its database is in the nightly backups, Gatus checks that the tracker loads, and it has a tile on Homepage.
 
 **Setup:**
 
@@ -159,7 +159,7 @@ The look: `custom.css` recolours Homepage with [Catppuccin](https://catppuccin.c
      "postgres_password[password]=$(openssl rand -hex 24)"
    ```
 3. **VPN-only DNS:** in NetBird, add the zone `umami.<domain>` with an A record `umami.<domain>` pointing at the main VM's NetBird IP, distributed to the same groups as the wiki's zone (see [Behind NetBird](#behind-netbird)).
-4. **Deploy:** `services/deploy.sh umami`, then `services/deploy.sh edge`.
+4. **Deploy:** `services/deploy.sh umami`, then `services/deploy.sh edge` and `services/deploy.sh homepage`. Then `backup`, a backup by hand, and `watchtower`, in that order (see [NetBox](#netbox) step 5 for why).
 5. **Change the default login right away.** Umami creates the account `admin` with the password `umami`, and everyone on the VPN can reach the sign-in page. Sign in at `https://umami.<domain>`, then under **Settings → Profile** set a new password (store it in the `Umami` item) and turn on two-factor sign-in.
 6. **The website:** under **Settings → Websites → Add website**, add `wiki.<domain>` and copy its **Website ID**.
 7. **Outline:** under **Settings → Integrations → Umami**, set the instance URL to `https://umami.<domain>/`, the script name to `script.js`, and the website ID from step 6. Outline adds Umami's address to its script allow-list by itself.
@@ -171,31 +171,6 @@ Browse the wiki, then watch Umami's **Realtime** view. Ad blockers may block the
 <script defer src="https://umami.<domain>/script.js" data-website-id="<website ID>" data-domains="<the site's domain>" data-do-not-track="true"></script>
 ```
 `data-domains` makes the tracker ignore copies of the site on other domains, and `data-do-not-track` respects visitors who ask not to be tracked. Umami sets no cookies and doesn't store IP addresses.
-
-**Ending the trial:** `ssh <host> 'cd ~/services/umami && docker compose down -v'` deletes it and its data. Then remove its integration in Outline, its NetBird zone, `services/umami/`, `edge/config/sites/umami.caddy` (deploy `edge`) and its name in `service_dns_names` (apply).
-
-## Matomo (trial)
-
-[Matomo](https://matomo.org) is the other analytics trial for the wiki, next to Umami: fuller reports and goals, but heavier (PHP and MariaDB, since Matomo supports only MySQL and MariaDB). It's at `matomo.<domain>`, VPN-only like Umami, and also kept out of the backups, Gatus and Homepage for now.
-
-Outline's Matomo integration records one page view per page load. Outline is a single-page app, so moving between documents isn't a new page load, and Matomo will count far fewer page views than Umami, whose tracker follows those in-app moves. Keep that in mind when comparing them.
-
-**Setup:**
-
-1. **DNS:** add `matomo.<domain>` to `service_dns_names`, then `terraform apply` (through `op run`). Expect 1 to add.
-2. **Secret, in 1Password:**
-   ```sh
-   op item create --vault=Homelab --category="Secure Note" --title="Matomo" \
-     "db_password[password]=$(openssl rand -hex 24)"
-   ```
-3. **VPN-only DNS:** in NetBird, add the zone `matomo.<domain>` with an A record `matomo.<domain>` pointing at the main VM's NetBird IP, distributed to the same groups as the wiki's zone.
-4. **Deploy:** `services/deploy.sh matomo`, then `services/deploy.sh edge`.
-5. **Run the installer right away.** Until it's finished, anyone who reaches `https://matomo.<domain>` can complete it and become the superuser. Open it, click through the system check, and accept the prefilled database settings. Create your superuser (store the password in the `Matomo` item), then add the first website: name `Wiki`, URL `https://wiki.<domain>`. Note its **site ID** (1 for the first site).
-6. **Outline:** under **Settings → Integrations → Matomo**, set the instance URL to `https://matomo.<domain>/` and the site ID from step 5.
-
-Browse the wiki, then check Matomo's **Visitors → Visits Log**. Like Umami's, Matomo's tracker is on uBlock Origin's lists, so trust the wiki in your blocker.
-
-**Ending the trial:** `ssh <host> 'cd ~/services/matomo && docker compose down -v'`, then remove its integration in Outline, its NetBird zone, `services/matomo/`, `edge/config/sites/matomo.caddy` (deploy `edge`) and its name in `service_dns_names` (apply).
 
 ## Apps with their own repo (shorti)
 
@@ -214,7 +189,7 @@ Bump the image tag in its `compose.yaml` and deploy. Outline runs database migra
 ## Backups
 
 Every night at 02:30 UTC, the `backup` stack:
-1. Dumps Outline's and NetBox's Postgres databases.
+1. Dumps the Postgres databases of Outline, NetBox and Umami.
 2. Copies Pocket ID's and shorti's SQLite databases with SQLite's online backup, which stays consistent while the apps keep writing.
 3. Sends those copies, plus the uploaded files of Outline, NetBox and Pocket ID (and NetBox's scripts), to restic.
 
@@ -287,6 +262,12 @@ docker compose run --rm -v ~/restore:/restore backup restic restore latest --tar
     docker run --rm --entrypoint cp -v netbox_$v:/data -v ~/restore/src/netbox-$v:/from:ro services/backup:local -a /from/. /data/
   done
   ```
+- **Umami** (websites, accounts and every recorded visit):
+  ```sh
+  cd ~/services/umami && docker compose stop umami
+  docker compose exec -T umami-postgres psql -q -U umami -d umami < ~/restore/staging/umami.sql
+  docker compose start umami
+  ```
 - **Pocket ID** (users, passkeys, OIDC clients):
   ```sh
   cd ~/services/pocket-id && docker compose stop pocket-id
@@ -310,11 +291,11 @@ Delete `~/restore` when you're done; it holds unencrypted copies of everything.
 
 A separate, Always Free AMD micro VM (`watchtower.tf`) watches the main VM from outside, because a VM that hangs can't report on itself. It runs two containers (`services/watchtower/`):
 
-- **Gatus** checks `wiki`, `cloud`, `netbox`, `auth`, `shorti` and `netbird` over HTTPS and the main VM's SSH port, every minute. The VPN-only sites and SSH are checked across the VCN, at the main VM's private IP (`MAIN_VM_PRIVATE_IP`). It sends an alert to your phone through [ntfy](https://ntfy.sh) after 3 failed checks in a row, or when a certificate has less than 10 days left. It sends another when things recover.
+- **Gatus** checks `wiki`, `cloud`, `netbox`, `auth`, `shorti`, `umami` (its public tracker) and `netbird` over HTTPS and the main VM's SSH port, every minute. The VPN-only sites and SSH are checked across the VCN, at the main VM's private IP (`MAIN_VM_PRIVATE_IP`). It sends an alert to your phone through [ntfy](https://ntfy.sh) after 3 failed checks in a row, or when a certificate has less than 10 days left. It sends another when things recover.
 - **backup-check** verifies the backups of both VMs every day at 06:00 UTC, first the main VM's, then the NetBird VM's:
   1. The latest backup is less than 26 hours old.
   2. The repository passes `restic check`, which also downloads and verifies a different quarter of all backup data each day (all of it every 4 days).
-  3. The databases restore: Pocket ID's and shorti's SQLite files pass an integrity check, and Outline's and NetBox's dumps load into a throwaway Postgres (NetBox's must hold at least one user). For NetBird, every SQLite database passes an integrity check, and the store still holds your account.
+  3. The databases restore: Pocket ID's and shorti's SQLite files pass an integrity check, and the dumps of Outline, NetBox and Umami load into a throwaway Postgres (NetBox's must hold at least one user, Umami's at least one website). For NetBird, every SQLite database passes an integrity check, and the store still holds your account.
 
   It reports each result to Gatus, as `nightly backup` and `netbird backup`. Gatus alerts on a failure, and also if no result arrives for 26 hours.
 

@@ -6,3 +6,4 @@
 RESTIC_PASSWORD={{ op://Homelab/Backups/restic_password }}
 POSTGRES_PASSWORD={{ op://Homelab/Outline/postgres_password }}
 NETBOX_POSTGRES_PASSWORD={{ op://Homelab/NetBox/postgres_password }}
+UMAMI_POSTGRES_PASSWORD={{ op://Homelab/Umami/postgres_password }}

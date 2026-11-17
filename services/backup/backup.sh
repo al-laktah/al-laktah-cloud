@@ -39,6 +39,10 @@ echo "== NetBox database"
 PGHOST=$NETBOX_PGHOST PGUSER=netbox PGDATABASE=netbox PGPASSWORD=$NETBOX_PGPASSWORD \
   pg_dump --clean --if-exists --no-owner --file /staging/netbox.sql
 
+echo "== Umami database"
+PGHOST=$UMAMI_PGHOST PGUSER=umami PGDATABASE=umami PGPASSWORD=$UMAMI_PGPASSWORD \
+  pg_dump --clean --if-exists --no-owner --file /staging/umami.sql
+
 echo "== SQLite databases"
 sqlite_backup /src/pocket-id/pocket-id.db /staging/pocket-id.db
 sqlite_backup /src/shorti/andy.db /staging/shorti.db

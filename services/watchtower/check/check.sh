@@ -101,9 +101,16 @@ main)
   step="the NetBox database has no users" # at least the admin, created on the first start
   [ "$(pg --dbname=netbox --tuples-only --no-align -c 'SELECT count(*) FROM users_user')" -gt 0 ]
   devices=$(pg --dbname=netbox --tuples-only --no-align -c 'SELECT count(*) FROM dcim_device')
+
+  step="the Umami database dump did not load into Postgres"
+  pg -c 'CREATE ROLE umami' -c 'CREATE DATABASE umami OWNER umami'
+  pg --dbname=umami --file=/restore/staging/umami.sql >/dev/null
+  step="the Umami database has no websites"
+  [ "$(pg --dbname=umami --tuples-only --no-align -c 'SELECT count(*) FROM website WHERE deleted_at IS NULL')" -gt 0 ]
+  pageviews=$(pg --dbname=umami --tuples-only --no-align -c 'SELECT count(*) FROM website_event WHERE event_type = 1')
   su-exec postgres pg_ctl --pgdata=/tmp/pg --silent --wait stop
 
-  summary="snapshot ${age_hours}h old, $documents Outline documents, $devices NetBox devices, data part $part/4 verified"
+  summary="snapshot ${age_hours}h old, $documents Outline documents, $devices NetBox devices, $pageviews Umami page views, data part $part/4 verified"
   ;;
 netbird)
   # store.db must be there; every other database that was backed up must be healthy too.

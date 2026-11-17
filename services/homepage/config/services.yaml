@@ -45,3 +45,8 @@
         widget:
           type: gatus
           url: "{{HOMEPAGE_VAR_GATUS_URL}}"
+    - Analytics:
+        icon: mdi-chart-line
+        href: https://umami.{{HOMEPAGE_VAR_DOMAIN}}
+        description: Umami, visits to the wiki and the website
+        siteMonitor: http://umami:3000/api/heartbeat
