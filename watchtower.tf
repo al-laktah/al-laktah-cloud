@@ -42,7 +42,7 @@ resource "oci_core_instance" "watchtower" {
 
 # Gatus' API and dashboard (port 8080), for the main VM only: Homepage's Gatus widget
 # reads the check results from there, across the VCN. Your devices reach the dashboard
-# over NetBird instead, which this firewall never sees (see services/README.md).
+# over NetBird instead, which this firewall never sees (see services/watchtower/README.md).
 resource "oci_core_network_security_group" "gatus" {
   compartment_id = local.compartment_id
   vcn_id         = oci_core_vcn.main.id

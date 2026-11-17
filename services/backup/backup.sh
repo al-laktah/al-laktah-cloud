@@ -48,7 +48,7 @@ sqlite_backup /src/pocket-id/pocket-id.db /staging/pocket-id.db
 sqlite_backup /src/shorti/andy.db /staging/shorti.db
 
 echo "== restic"
-# The repository is created once, by hand (see services/README.md), never here: a
+# The repository is created once, by hand (see services/backup/README.md), never here: a
 # failed read looks just like a missing repository, and initialising over an
 # existing one would lock you out of every backup already in it.
 restic backup --tag nightly \

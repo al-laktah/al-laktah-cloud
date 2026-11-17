@@ -10,7 +10,7 @@
 # For the NetBird VM, also open STUN's UDP port:
 #                            ssh <host> 'sudo OPEN_UDP_PORTS=3478 bash -s' < host/setup-vm.sh
 # To join the VM to NetBird, pass a setup key from the dashboard, and open WireGuard's
-# port (see services/README.md):
+# port (see services/netbird/README.md, "Behind NetBird"):
 #   ssh <host> 'sudo NETBIRD_URL=https://netbird.example.com NETBIRD_SETUP_KEY=<key> OPEN_UDP_PORTS=51820 bash -s' < host/setup-vm.sh
 # Running it again is safe, it only does what is still missing.
 set -euo pipefail

@@ -65,7 +65,7 @@ env_content="HOST_UID=$(remote id -u)"$'\n'"HOST_GID=$(remote id -g)"$'\n'"$env_
 # config file it reads does, so stacks that read config files (like netbird) put
 # ${STACK_HASH} in a label: any change to a file or secret then recreates them.
 stack_hash=$({
-  (cd "$service" && find . \( -name .claude -o -name .DS_Store \) -prune -o \
+  (cd "$service" && find . \( -name .claude -o -name .DS_Store -o -name README.md \) -prune -o \
     -type f ! -name .env ! -name .env.tpl -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256)
   printf '%s' "$env_content"
 } | shasum -a 256 | cut -c1-16)
@@ -75,8 +75,9 @@ remote "mkdir -p $dir && { docker network inspect web >/dev/null 2>&1 || docker 
 
 # --delete keeps the VM in step with the repo; .env is excluded so it survives.
 # Service data lives in named Docker volumes, never inside ~/services/<service>.
-# Local clutter stays home too: tool state (.claude) and Finder files (.DS_Store).
-rsync -a --delete --exclude .env --exclude .env.tpl --exclude .claude/ --exclude .DS_Store \
+# Local clutter stays home too: tool state (.claude), Finder files (.DS_Store) and the
+# docs (README.md), so editing a stack's README never restarts its containers.
+rsync -a --delete --exclude .env --exclude .env.tpl --exclude .claude/ --exclude .DS_Store --exclude README.md \
   -e "ssh ${ssh_opts[*]}" "$service/" "$host:$dir/"
 printf '%s\n' "$env_content" | remote "umask 077 && cat > $dir/.env"
 
